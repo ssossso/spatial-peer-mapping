@@ -62,7 +62,6 @@
           <label style="display:flex; align-items:center; gap:6px; font-weight:800; color:#374151;">
             이전
             <select id="chg_prev" style="padding:6px 8px; border-radius:10px; border:1px solid #d1d5db;">
-              <option value="1">1차</option>
               <option value="2">2차</option>
               <option value="3">3차</option>
               <option value="4">4차</option>
@@ -73,7 +72,6 @@
           <label style="display:flex; align-items:center; gap:6px; font-weight:800; color:#374151;">
             현재
             <select id="chg_curr" style="padding:6px 8px; border-radius:10px; border:1px solid #d1d5db;">
-              <option value="1">1차</option>
               <option value="2">2차</option>
               <option value="3">3차</option>
               <option value="4">4차</option>
@@ -504,7 +502,7 @@
     if(!chgPrev || !chgCurr) return;
 
     const curr = parseInt(sid, 10);
-    const prev = isFinite(curr) ? (curr > 1 ? (curr - 1) : 1) : 1;
+    const prev = isFinite(curr) ? Math.max(2, curr - 1) : 2;
 
     chgCurr.value = String(curr);
     chgPrev.value = String(prev);
