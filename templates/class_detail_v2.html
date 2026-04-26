@@ -210,7 +210,7 @@
 
   <div style="font-weight:900; text-align:center;">측정 회차 선택</div>
 
-  {% set rounds = [("1","3월 말"), ("2","4월 말"), ("3","5월 말"), ("4","6월 말")] %}
+  {% set rounds = [("0","3월 말"), ("2","5월 말"), ("3","6월 말")] %}
   <div class="round-row">
     {% for n, when in rounds %}
       <div
@@ -218,10 +218,10 @@
         data-open-href="/teacher/class/{{ code }}/v2?sid={{ n }}&open=1"
         role="button"
         tabindex="0"
-        title="{{ n }}차 조사 열기"
+        title="{{ to_display_session_id(n) }}차 조사 열기"
       >
         <div>
-          <div class="round-main">{{ n }}회차</div>
+          <div class="round-main">{{ to_display_session_id(n) }}회차</div>
           <div class="round-sub">{{ when }}</div>
         </div>
         <a
@@ -236,11 +236,12 @@
   </div>
 
   {% if open_panel %}
+  {% set sid_display = to_display_session_id(sid) %}
   <div class="panel" id="roundPanel">
     <div class="panel-hd">
       <div>
-        <div class="panel-title">{{ sid }}회차 조사</div>
-        <div class="panel-sub">선택 회차: {{ sid }}회차</div>
+        <div class="panel-title">{{ sid_display }}회차 조사</div>
+        <div class="panel-sub">선택 회차: {{ sid_display }}회차</div>
       </div>
       <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" target="_blank" rel="noopener noreferrer">분석 화면</a>
     </div>
@@ -296,16 +297,16 @@
           {% set qr_src = '/qr/' ~ code ~ '/' ~ sid ~ '.png' %}
 
           <div class="qr-box" style="text-align:center;">
-            <div style="font-weight:950; margin-bottom:6px;">{{ sid }}회차 QR</div>
+            <div style="font-weight:950; margin-bottom:6px;">{{ sid_display }}회차 QR</div>
             <img
               src="{{ qr_src }}"
-              alt="{{ sid }}회차 QR"
+              alt="{{ sid_display }}회차 QR"
               style="width:150px; height:150px; border-radius:10px; border:1px solid #eef2f7; display:block; margin:0 auto;"
               loading="lazy"
             />
             <div class="btn-row" style="justify-content:center;">
               <button type="button" class="pill" onclick="openQrNewWindowOnly('{{ qr_src }}')">크게 보기</button>
-              <button type="button" class="pill" onclick="downloadQrPng('{{ qr_src }}', '{{ sid }}회차')">다운로드</button>
+              <button type="button" class="pill" onclick="downloadQrPng('{{ qr_src }}', '{{ sid_display }}회차')">다운로드</button>
             </div>
 
             <a

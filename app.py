@@ -464,13 +464,21 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
 
 
 SITE_TITLE = "내가 바라본 우리 반"
-DEFAULT_VISIBLE_SESSION_ID = "2"
-VISIBLE_SESSION_IDS = ["2", "3", "4"]
+DEFAULT_VISIBLE_SESSION_ID = "0"
+VISIBLE_SESSION_IDS = ["0", "2", "3"]
 
 
 def normalize_visible_session_id(raw: Any) -> str:
     sid = str(raw or "").strip()
     return sid if sid in VISIBLE_SESSION_IDS else DEFAULT_VISIBLE_SESSION_ID
+
+
+def to_display_session_id(raw: Any) -> str:
+    """사용자 화면용 회차 표기(내부 sid - 1)."""
+    sid = str(raw or "").strip()
+    if sid.isdigit():
+        return str(int(sid) - 1)
+    return sid
 
 # JSON fallback file (only used if DB not configured)
 DATA_FILE = os.environ.get("DATA_FILE", "data.json")
@@ -1412,7 +1420,10 @@ def get_current_class() -> Optional[Dict[str, str]]:
 
 @app.context_processor
 def inject_globals() -> Dict[str, Any]:
-    return {"current_class": get_current_class()}
+    return {
+        "current_class": get_current_class(),
+        "to_display_session_id": to_display_session_id,
+    }
 
 
 # -------------------------
@@ -2567,7 +2578,7 @@ def teacher_analysis(code):
 
     code = (code or "").upper().strip()
     sid = (request.args.get("sid") or DEFAULT_VISIBLE_SESSION_ID).strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
         sid = DEFAULT_VISIBLE_SESSION_ID
 
     cls = db_get_class_for_teacher(code, session["teacher"])
@@ -2650,8 +2661,8 @@ def api_v2_state(code: str, sid: str):
 
     code = (code or "").upper().strip()
     sid = (sid or "").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4"]:
+        sid = "0"
 
     cls = _require_class_access(code, t)
     if not cls:
@@ -2680,8 +2691,8 @@ def api_v2_preview_seen(code: str, sid: str):
         return jsonify({"ok": False, "error": "UNAUTHORIZED"}), 401
     code = (code or "").upper().strip()
     sid = (sid or "").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4"]:
+        sid = "0"
 
     cls = _require_class_access(code, t)
     if not cls:
@@ -2698,8 +2709,8 @@ def api_v2_exclusions(code: str, sid: str):
         return jsonify({"ok": False, "error": "UNAUTHORIZED"}), 401
     code = (code or "").upper().strip()
     sid = (sid or "").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4"]:
+        sid = "0"
 
     cls = _require_class_access(code, t)
     if not cls:
@@ -2736,8 +2747,8 @@ def api_v2_survey(code: str, sid: str):
         return jsonify({"ok": False, "error": "UNAUTHORIZED"}), 401
     code = (code or "").upper().strip()
     sid = (sid or "").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4"]:
+        sid = "0"
 
     cls = _require_class_access(code, t)
     if not cls:
@@ -2755,8 +2766,8 @@ def api_v2_finalize(code: str, sid: str):
         return jsonify({"ok": False, "error": "UNAUTHORIZED"}), 401
     code = (code or "").upper().strip()
     sid = (sid or "").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4"]:
+        sid = "0"
 
     cls = _require_class_access(code, t)
     if not cls:
@@ -2783,8 +2794,8 @@ def teacher_session_result(code: str, sid: str):
 
     code = (code or "").upper().strip()
     sid = (sid or "").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4"]:
+        sid = "0"
 
     cls = db_get_class_for_teacher(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
@@ -2833,8 +2844,8 @@ def teacher_view_student_result(code, sid, url_name):
 
     code = (code or "").upper().strip()
     sid = (sid or "1").strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
+        sid = "0"
 
     student_name = (unquote(url_name) or "").strip()
 
@@ -2916,7 +2927,7 @@ def student_enter_session(code, sid):
 
     # 2) sid 보정
     if sid not in (cls.get("sessions") or {}):
-        sid = "1"
+        sid = "0"
 
     session_label = (cls.get("sessions") or {}).get(sid, {}).get("label", f"{sid}차")
 
@@ -2993,8 +3004,8 @@ def student_enter_session(code, sid):
 def qr_session_link(code, sid):
     code = (code or "").upper().strip()
     sid = str(sid).strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
+        sid = "0"
 
     if engine:
         with engine.connect() as conn:
@@ -3094,7 +3105,7 @@ def student_write():
     name = (session.get("name") or "").strip()
 
     sid = (session.get("sid") or DEFAULT_VISIBLE_SESSION_ID).strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
         sid = DEFAULT_VISIBLE_SESSION_ID
         session["sid"] = sid
 
@@ -3178,7 +3189,7 @@ def student_write():
     if name not in (cls.get("students_data") or {}):
         return redirect("/student")
     if sid not in (cls.get("sessions") or {}):
-        sid = "1"
+        sid = "0"
         session["sid"] = sid
 
     student = cls["students_data"][name]
@@ -3255,7 +3266,7 @@ def teacher_placement_start(code):
 
     code = (code or "").upper().strip()
     sid = normalize_visible_session_id(request.args.get("sid") or session.get("selected_session"))
-    if sid not in ["1", "2", "3", "4", "5"]:
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
         sid = DEFAULT_VISIBLE_SESSION_ID
 
     # ✅ 새로 작성(덮어쓰기 시작)은 ?new=1 로만 한다
@@ -4412,8 +4423,8 @@ def analysis_student_avg(code, sid):
 
     code = (code or "").upper().strip()
     sid = (sid or "1").strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
+        sid = "0"
 
     cls = db_get_class_for_teacher(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
@@ -4436,8 +4447,8 @@ def analysis_student_vs_avg(code, sid, student_name):
 
     code = (code or "").upper().strip()
     sid = (sid or "1").strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
+        sid = "0"
 
     student_name = unquote(student_name or "").strip()
 
@@ -4468,8 +4479,8 @@ def analysis_kmeans_summary(code, sid):
 
     code = (code or "").upper().strip()
     sid = (sid or "1").strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+    if sid not in ["0", "1", "2", "3", "4", "5"]:
+        sid = "0"
 
     cls = db_get_class_for_teacher(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
@@ -4500,7 +4511,7 @@ def analysis_dbscan_structure(code, sid):
         return redirect("/teacher/login")
 
     code = code.upper()
-    sid = sid if sid in ["1", "2", "3", "4", "5"] else "1"
+    sid = sid if sid in ["0", "1", "2", "3", "4", "5"] else "0"
 
     cls = db_get_class_for_teacher(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
@@ -4525,9 +4536,9 @@ def analysis_dbscan_change(code):
     prev_sid = (request.args.get("prev") or "1").strip()
     curr_sid = (request.args.get("curr") or "2").strip()
 
-    valid_sids = ["1", "2", "3", "4", "5"]
+    valid_sids = ["0", "1", "2", "3", "4", "5"]
     if prev_sid not in valid_sids:
-        prev_sid = "1"
+        prev_sid = "0"
     if curr_sid not in valid_sids:
         curr_sid = "2"
 
