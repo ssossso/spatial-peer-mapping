@@ -1,22 +1,21 @@
-
 {% extends "base.html" %}
 {% block content %}
 <div class="card" style="max-width:980px; text-align:left;">
   <h2 style="margin:0 0 6px 0; text-align:center;">회차 비교 분석 ({{ cls.name }})</h2>
   <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
-    1~4차 구조 변화 — 밀집 / 경계 / 고립
+    4월 말 이후 회차 구조 변화 - 밀집 / 경계 / 고립
   </p>
 
   <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:12px;">
-    <a class="btn" href="/teacher/class/{{ code }}/v2?sid=1&open=1" style="text-decoration:none;">← 회차 화면으로</a>
-    <a class="btn" href="/teacher/class/{{ code }}/analysis?sid=1" style="text-decoration:none;">단일 회차 분석(1차)</a>
+    <a class="btn" href="/teacher/class/{{ code }}/v2?sid=2&open=1" style="text-decoration:none;">회차 화면으로</a>
+    <a class="btn" href="/teacher/class/{{ code }}/analysis?sid=2" style="text-decoration:none;">단일 회차 분석(4월 말)</a>
   </div>
 
-  <div style="border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; background:#fff;">
+  <div style="border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; background:#fff;">
     <div style="padding:10px 12px; background:#f8fafc; border-bottom:1px solid #eef2f7; font-weight:950;">
-      핵심 지표 변화
+      구조 지표 변화
       <span style="margin-left:8px; color:#6b7280; font-weight:800; font-size:12px;">
-        (알고리즘 용어 없이 상태 기반 비교)
+        알고리즘 요약은 참고 자료로만 활용해 주세요.
       </span>
     </div>
 
@@ -39,7 +38,7 @@
           </thead>
           <tbody id="rows">
             <tr>
-              <td colspan="8" style="padding:12px; color:#6b7280;">데이터를 불러오는 중…</td>
+              <td colspan="8" style="padding:12px; color:#6b7280;">데이터를 불러오는 중...</td>
             </tr>
           </tbody>
         </table>
@@ -50,7 +49,7 @@
       </div>
 
       <details style="margin-top:10px;">
-        <summary style="cursor:pointer; font-weight:950;">재현 정보(파라미터) 보기</summary>
+        <summary style="cursor:pointer; font-weight:950;">재현 정보 보기</summary>
         <pre id="params" style="white-space:pre-wrap; font-size:12px; margin-top:8px; background:#0b1020; color:#e5e7eb; padding:10px; border-radius:12px;"></pre>
       </details>
     </div>
@@ -65,35 +64,35 @@
   const tbody = document.getElementById("rows");
   const notesBox = document.getElementById("notes");
   const paramsBox = document.getElementById("params");
-
   const canvas = document.getElementById("trend");
   const ctx = canvas.getContext("2d");
 
+  function sessionLabel(sid){
+    const labels = {"2": "4월 말", "3": "5월 말", "4": "6월 말"};
+    return labels[String(sid)] || `${sid}회차`;
+  }
+
   function clearTrend(){
-    ctx.clearRect(0,0,canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
   function drawTrend(points){
-    // points: [{sid:"1", isoRatio:0.2}, ...]
     clearTrend();
-
     ctx.save();
     ctx.fillStyle = "#111827";
     ctx.font = "14px system-ui";
-    ctx.fillText("고립 비율 변화(회차별)", 14, 22);
+    ctx.fillText("고립 비율 변화", 14, 22);
     ctx.restore();
 
     const W = canvas.width;
     const H = canvas.height;
-
     const padL = 50, padR = 20, padT = 40, padB = 30;
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
 
-    // y: 0..1
     ctx.save();
     ctx.strokeStyle = "rgba(17,24,39,0.15)";
-    for(let i=0;i<=4;i++){
+    for(let i = 0; i <= 4; i++){
       const y = padT + (plotH * i / 4);
       ctx.beginPath();
       ctx.moveTo(padL, y);
@@ -102,12 +101,11 @@
     }
     ctx.restore();
 
-    // axis labels
     ctx.save();
     ctx.fillStyle = "rgba(17,24,39,0.75)";
     ctx.font = "12px system-ui";
     ctx.fillText("1.0", 14, padT + 4);
-    ctx.fillText("0.5", 14, padT + plotH/2 + 4);
+    ctx.fillText("0.5", 14, padT + plotH / 2 + 4);
     ctx.fillText("0.0", 14, padT + plotH + 4);
     ctx.restore();
 
@@ -116,34 +114,28 @@
     const xs = points.map((p, idx) => padL + (plotW * (idx / Math.max(1, points.length - 1))));
     const ys = points.map(p => padT + plotH * (1 - (p.isoRatio || 0)));
 
-    // line
     ctx.save();
     ctx.strokeStyle = "#111827";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(xs[0], ys[0]);
-    for(let i=1;i<xs.length;i++){
-      ctx.lineTo(xs[i], ys[i]);
-    }
+    for(let i = 1; i < xs.length; i++) ctx.lineTo(xs[i], ys[i]);
     ctx.stroke();
     ctx.restore();
 
-    // dots + x labels
     ctx.save();
     ctx.fillStyle = "#111827";
     ctx.font = "12px system-ui";
-    for(let i=0;i<xs.length;i++){
+    for(let i = 0; i < xs.length; i++){
       ctx.beginPath();
-      ctx.arc(xs[i], ys[i], 4, 0, Math.PI*2);
+      ctx.arc(xs[i], ys[i], 4, 0, Math.PI * 2);
       ctx.fill();
-
-      const label = points[i].sid + "차";
-      ctx.fillText(label, xs[i]-10, padT + plotH + 18);
+      ctx.fillText(sessionLabel(points[i].sid), xs[i] - 18, padT + plotH + 18);
     }
     ctx.restore();
   }
 
-  function trCell(text, alignRight=false){
+  function trCell(text, alignRight = false){
     const td = document.createElement("td");
     td.textContent = text;
     td.style.padding = "10px";
@@ -154,13 +146,13 @@
 
   function fmtRatio(x){
     if(x === null || x === undefined) return "-";
-    const v = Math.round(x * 1000) / 10; // 0.1% 단위
+    const v = Math.round(x * 1000) / 10;
     return v.toFixed(1) + "%";
   }
 
   async function loadAll(){
     tbody.innerHTML = "";
-    notesBox.textContent = "회차별 메모를 불러오는 중…";
+    notesBox.textContent = "회차별 메모를 불러오는 중...";
     paramsBox.textContent = "";
 
     const results = [];
@@ -172,10 +164,9 @@
       try{
         const r = await fetch(url);
         const payload = await r.json();
-
         const c = payload.counts || {};
         const n = payload.n_points ?? (payload.points ? payload.points.length : 0);
-        const isoRatio = c.isolated_ratio ?? (n ? ((c.isolated||0)/n) : 0);
+        const isoRatio = c.isolated_ratio ?? (n ? ((c.isolated || 0) / n) : 0);
 
         results.push({
           sid,
@@ -184,27 +175,22 @@
           boundary: c.boundary ?? 0,
           isolated: c.isolated ?? 0,
           isoRatio,
-          clusterCount: c.cluster_count ?? ((c.cluster_sizes||[]).length),
+          clusterCount: c.cluster_count ?? ((c.cluster_sizes || []).length),
           clusterSizes: c.cluster_sizes ?? [],
         });
 
         const notes = payload.notes || [];
-        if(notes.length){
-          allNotes.push(`${sid}차: ${notes.join(" / ")}`);
-        }
-
+        if(notes.length) allNotes.push(`${sessionLabel(sid)}: ${notes.join(" / ")}`);
         allParams[sid] = payload.params || {};
       }catch(e){
-        results.push({ sid, n: 0, dense: 0, boundary: 0, isolated: 0, isoRatio: 0, clusterCount: 0, clusterSizes: []});
-        allNotes.push(`${sid}차: 데이터를 불러오지 못했습니다.`);
+        results.push({ sid, n: 0, dense: 0, boundary: 0, isolated: 0, isoRatio: 0, clusterCount: 0, clusterSizes: [] });
+        allNotes.push(`${sessionLabel(sid)} 데이터를 불러오지 못했습니다.`);
       }
     }
 
-    // 표 채우기
     for(const r of results){
       const tr = document.createElement("tr");
-
-      tr.appendChild(trCell(r.sid + "차"));
+      tr.appendChild(trCell(sessionLabel(r.sid)));
       tr.appendChild(trCell(String(r.n), true));
       tr.appendChild(trCell(String(r.dense), true));
       tr.appendChild(trCell(String(r.boundary), true));
@@ -212,17 +198,11 @@
       tr.appendChild(trCell(fmtRatio(r.isoRatio), true));
       tr.appendChild(trCell(String(r.clusterCount), true));
       tr.appendChild(trCell((r.clusterSizes && r.clusterSizes.length) ? r.clusterSizes.join(", ") : "-", false));
-
       tbody.appendChild(tr);
     }
 
-    // 트렌드(고립 비율)
     drawTrend(results.map(r => ({sid: r.sid, isoRatio: r.isoRatio})));
-
-    // 메모
     notesBox.textContent = allNotes.length ? allNotes.join(" | ") : "특이 메모 없음";
-
-    // 파라미터(재현)
     paramsBox.textContent = JSON.stringify(allParams, null, 2);
   }
 
