@@ -1,0 +1,522 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:980px; text-align:left;">
+  <h2 style="margin:0 0 6px 0; text-align:center;">연구 분석 ({{ cls.name }})</h2>
+  <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
+    {{ sid }}차 결과 — 밀집 / 경계 / 고립 구조
+  </p>
+
+  <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:12px;">
+    <a class="btn" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">← 회차 화면으로</a>
+  </div>
+
+  <div style="border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; background:#fff;">
+    <div style="padding:10px 12px; background:#f8fafc; border-bottom:1px solid #eef2f7; font-weight:950;">
+      구조 시각화
+      <span style="margin-left:8px; color:#6b7280; font-weight:800; font-size:12px;">
+        (상태로만 표시)
+      </span>
+    </div>
+
+    <div style="padding:12px;">
+      <canvas id="viz" width="920" height="520" style="width:100%; height:auto; border:1px solid #e5e7eb; border-radius:12px;"></canvas>
+
+      <div id="metrics" style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+        <div class="card" style="padding:10px; margin:0;">
+          <div style="font-weight:950;">밀집</div>
+          <div id="m_dense" style="font-size:22px; font-weight:950;">-</div>
+        </div>
+        <div class="card" style="padding:10px; margin:0;">
+          <div style="font-weight:950;">경계</div>
+          <div id="m_boundary" style="font-size:22px; font-weight:950;">-</div>
+        </div>
+        <div class="card" style="padding:10px; margin:0;">
+          <div style="font-weight:950;">고립</div>
+          <div id="m_isolated" style="font-size:22px; font-weight:950;">-</div>
+        </div>
+      </div>
+
+      <div id="notes" style="margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:12px; font-weight:800; color:#374151;">
+        
+      </div>
+      
+      <div id="dbscan_teacher_box" style="margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:12px;">
+        <div style="font-weight:950;">구조 요약</div>
+        <div id="dbscan_structure_summary" style="margin-top:8px; font-weight:900;"></div>
+        <div id="dbscan_key_signal" style="margin-top:8px; font-weight:800; color:#374151;"></div>
+        <div id="dbscan_reflection" style="margin-top:8px; color:#374151;"></div>
+        <!-- dbscan_note: 문구 제거(주석 처리) -->
+</div>
+
+
+      <div id="dbscan_change_box" style="margin-top:10px; padding:10px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:12px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div style="font-weight:950;">이전 회차 대비 변화</div>
+
+          <span style="color:#6b7280; font-weight:800; font-size:12px;">
+            (구조 지표의 증감에 기반한 비교 요약)
+          </span>
+
+          <div style="flex:1;"></div>
+
+          <label style="display:flex; align-items:center; gap:6px; font-weight:800; color:#374151;">
+            이전
+            <select id="chg_prev" style="padding:6px 8px; border-radius:10px; border:1px solid #d1d5db;">
+              <option value="2">2차</option>
+              <option value="3">3차</option>
+              <option value="4">4차</option>
+              <option value="5">5차</option>
+            </select>
+          </label>
+
+          <label style="display:flex; align-items:center; gap:6px; font-weight:800; color:#374151;">
+            현재
+            <select id="chg_curr" style="padding:6px 8px; border-radius:10px; border:1px solid #d1d5db;">
+              <option value="2">2차</option>
+              <option value="3">3차</option>
+              <option value="4">4차</option>
+              <option value="5">5차</option>
+            </select>
+          </label>
+
+          <button id="chg_run" class="btn" type="button" style="padding:8px 12px;">비교</button>
+        </div>
+
+        <div id="chg_status" style="margin-top:10px; color:#6b7280; font-weight:800;"></div>
+
+        <div id="chg_summary" style="margin-top:8px; font-weight:900;"></div>
+        <div id="chg_signal" style="margin-top:8px; font-weight:800; color:#374151;"></div>
+        <div id="chg_reflection" style="margin-top:8px; color:#374151;"></div>
+        <div id="chg_note" style="margin-top:10px; color:#6b7280; font-size:13px;"></div>
+
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; font-weight:900;">(연구 재현용) 변화 비교 원자료 보기</summary>
+          <pre id="chg_raw" style="white-space:pre-wrap; font-size:12px; margin-top:8px; background:#0b1020; color:#e5e7eb; padding:10px; border-radius:12px;"></pre>
+        </details>
+      </div>
+
+      <!-- 분석 설정(연구 재현용): 화면에서 숨김(주석 처리) -->
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer; font-weight:950;">관계 집단(개요) (보조)</summary>
+
+        <div style="margin-top:10px; padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff;">
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <div style="font-weight:900;">집단 개수(요약)</div>
+
+            <select id="k_sel" style="padding:8px 10px; border-radius:10px; border:1px solid #d1d5db;">
+              <option value="2">2개로 요약</option>
+              <option value="3" selected>3개로 요약</option>
+              <option value="4">4개로 요약</option>
+            </select>
+
+            <button id="k_run" class="btn" type="button" style="padding:8px 12px;">불러오기</button>
+
+            <span style="color:#6b7280; font-weight:800; font-size:12px;">
+              이 요약은 비교/개요용이며, 핵심 구조 해석은 위의 밀집/경계/고립 결과를 따릅니다.
+            </span>
+          </div>
+
+          <div id="k_status" style="margin-top:10px; color:#6b7280; font-weight:800;"></div>
+          <div id="k_summary_sentence" style="margin-top:6px; font-weight:900;"></div>
+
+          <div id="k_result" style="margin-top:10px; display:grid; grid-template-columns:1fr; gap:8px;">
+            <!-- 결과 카드가 들어옴 -->
+          </div>
+
+          <details style="margin-top:10px;">
+            <summary style="cursor:pointer; font-weight:900;">(연구 재현용) k-means 원자료 보기</summary>
+            <pre id="k_raw" style="white-space:pre-wrap; font-size:12px; margin-top:8px; background:#0b1020; color:#e5e7eb; padding:10px; border-radius:12px;"></pre>
+          </details>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const code = "{{ code }}";
+  const sid = "{{ sid }}";
+
+  // -------------------------
+  // DBSCAN (core)
+  // -------------------------
+  const dbscanUrl = `/analysis/class/${code}/${sid}/dbscan_structure.json`;
+
+  const canvas = document.getElementById("viz");
+  const ctx = canvas.getContext("2d");
+
+  function clear(){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // 좌표를 캔버스 안으로 맞추기: bbox 기반 + 여백
+  function fit(points){
+    if(!points || points.length === 0) return [];
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+
+    const minx = Math.min(...xs), maxx = Math.max(...xs);
+    const miny = Math.min(...ys), maxy = Math.max(...ys);
+
+    const rx = (maxx - minx) || 1;
+    const ry = (maxy - miny) || 1;
+
+    const pad = 0.06;
+    const W = canvas.width;
+    const H = canvas.height;
+
+    return points.map(p => {
+      const nx = (p.x - minx) / rx;
+      const ny = (p.y - miny) / ry;
+      return {
+        ...p,
+        cx: (pad * W) + nx * (W * (1 - 2 * pad)),
+        cy: (pad * H) + ny * (H * (1 - 2 * pad)),
+      };
+    });
+  }
+
+  function drawFog(fogPoints){
+    if(!fogPoints || fogPoints.length === 0) return;
+
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+
+    // Fog = 집단 수준 구조(밀집점 주변을 부드럽게 누적)
+    for(const p of fogPoints){
+      const g = ctx.createRadialGradient(p.cx, p.cy, 0, p.cx, p.cy, 70);
+      g.addColorStop(0, "rgba(74,108,247,0.55)");
+      g.addColorStop(1, "rgba(74,108,247,0.00)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, 70, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawLabel(p){
+    const name = (p.name || p.label || p.student || "").toString().trim();
+    if(!name) return;
+
+    ctx.save();
+    ctx.font = "12px system-ui";
+    ctx.textBaseline = "middle";
+
+    const padX = 6;
+    const padY = 4;
+    const x = p.cx;
+    const y = p.cy + 16; // 점 아래
+
+    const w = ctx.measureText(name).width + padX * 2;
+    const h = 18;
+    const rx = x - w/2;
+    const ry = y - h/2;
+
+    // 배경(가독성)
+    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    ctx.strokeStyle = "rgba(17,24,39,0.20)";
+    ctx.lineWidth = 1;
+
+    const r2 = 8;
+    ctx.beginPath();
+    ctx.moveTo(rx + r2, ry);
+    ctx.arcTo(rx + w, ry, rx + w, ry + h, r2);
+    ctx.arcTo(rx + w, ry + h, rx, ry + h, r2);
+    ctx.arcTo(rx, ry + h, rx, ry, r2);
+    ctx.arcTo(rx, ry, rx + w, ry, r2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#111827";
+    ctx.fillText(name, rx + padX, y);
+    ctx.restore();
+  }
+
+  function drawPoint(p){
+    const r = 9;
+
+    // 밀집: 진한 점
+    if(p.state === "dense"){
+      ctx.save();
+      ctx.fillStyle = "#111827";
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      drawLabel(p);
+      return;
+    }
+
+    // 경계: 흐린 점 + 점선 테두리
+    if(p.state === "boundary"){
+      ctx.save();
+      ctx.fillStyle = "rgba(17,24,39,0.25)";
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = "rgba(17,24,39,0.75)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r + 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      drawLabel(p);
+      return;
+    }
+
+    // 고립: 비어 있는 링
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(17,24,39,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    drawLabel(p);
+  }
+
+  function renderDbscan(payload){
+    const pts = fit(payload.points || []);
+    const fog = fit(payload.fog_points || []);
+
+    clear();
+    drawFog(fog);
+    for(const p of pts) drawPoint(p);
+
+    const c = payload.counts || {};
+    document.getElementById("m_dense").textContent = (c.dense ?? "-");
+    document.getElementById("m_boundary").textContent = (c.boundary ?? "-");
+    document.getElementById("m_isolated").textContent = (c.isolated ?? "-");
+
+    const notes = payload.notes || [];
+    const notesEl = document.getElementById("notes");
+    if(notesEl){
+      if(notes.length){
+        notesEl.style.display = "";
+        notesEl.textContent = notes.join(" / ");
+      }else{
+        // 특이 메모 없음: 카드 자체를 숨김
+        notesEl.style.display = "none";
+        notesEl.textContent = "";
+      }
+    }
+
+    // 교사용 구조 요약(서버 생성 문장)
+    const t = payload.teacher_summary || {};
+    const el1 = document.getElementById("dbscan_structure_summary");
+    const el2 = document.getElementById("dbscan_key_signal");
+    const el3 = document.getElementById("dbscan_reflection");
+    const el4 = document.getElementById("dbscan_note");
+
+    if(el1) el1.textContent = t.structure_summary || "";
+    if(el2) el2.textContent = t.key_signal || "";
+    if(el3) el3.textContent = t.reflection_prompt || "";
+
+    // note 문구는 화면에서 숨김(주석 처리된 영역)
+    if(el4){
+      el4.textContent = "";
+      el4.style.display = "none";
+    }
+  }
+
+
+  fetch(dbscanUrl)
+    .then(r => r.json())
+    .then(renderDbscan)
+    .catch(err => {
+      clear();
+      ctx.fillStyle = "#111827";
+      ctx.font = "16px system-ui";
+      ctx.fillText("분석 데이터를 불러오지 못했습니다.", 20, 40);
+      console.error(err);
+    });
+
+  // -------------------------
+  // K-means (overview / optional)
+  // -------------------------
+  const kSel = document.getElementById("k_sel");
+  const kRun = document.getElementById("k_run");
+  const kStatus = document.getElementById("k_status");
+  const kResult = document.getElementById("k_result");
+  const kRaw = document.getElementById("k_raw");
+
+  function setKLoading(msg){
+    kStatus.textContent = msg;
+    kResult.innerHTML = "";
+    kRaw.textContent = "";
+  }
+
+  function card(title, body){
+    const d = document.createElement("div");
+    d.className = "card";
+    d.style.margin = "0";
+    d.style.padding = "10px 12px";
+
+    const h = document.createElement("div");
+    h.textContent = title;
+    h.style.fontWeight = "950";
+    h.style.marginBottom = "6px";
+
+    const p = document.createElement("div");
+    p.textContent = body;
+    p.style.fontWeight = "800";
+    p.style.color = "#374151";
+    p.style.whiteSpace = "pre-wrap";
+
+    d.appendChild(h);
+    d.appendChild(p);
+    return d;
+  }
+
+  function renderKmeans(payload){
+    kRaw.textContent = JSON.stringify(payload || {}, null, 2);
+
+    if(payload && payload.error){
+      kStatus.textContent = "요약을 만들 수 없습니다: " + payload.error;
+      return;
+    }
+
+    const groups = (payload && Array.isArray(payload.groups)) ? payload.groups : [];
+    if(groups.length === 0){
+      kStatus.textContent = "요약 결과가 없습니다.";
+      kResult.innerHTML = "";
+      return;
+    }
+
+    const kSummary = document.getElementById("k_summary_sentence");
+    
+    kStatus.textContent = "";
+    kSummary.textContent =
+      `이번 회차에서 학생 관계는 ${payload.k}개의 관계 집단으로 요약될 수 있습니다. ` +
+      `다만 이 요약은 관계를 단순화하는 과정에서 일부 세부적인 차이가 줄어들 수 있으므로, ` +
+      `관계 해석은 위의 구조를 우선하여 살펴보는 것을 추천합니다.`;
+
+    
+    kResult.innerHTML = "";
+
+    for(const g of groups){
+      const groupNo = g.group_no ?? "";
+      const members = Array.isArray(g.members) ? g.members : [];
+      const title = `집단 ${groupNo}`;
+      const body = members.length ? members.join(", ") : "(없음)";
+      kResult.appendChild(card(title, body));
+    }
+  }
+
+
+  function runKmeans(){
+    const k = (kSel && kSel.value) ? kSel.value : "3";
+    const url = `/analysis/class/${code}/${sid}/kmeans_summary.json?k=${encodeURIComponent(k)}`;
+
+    setKLoading("요약을 불러오는 중…");
+
+    fetch(url)
+      .then(r => r.json())
+      .then(renderKmeans)
+      .catch(err => {
+        kStatus.textContent = "요약 데이터를 불러오지 못했습니다.";
+        console.error(err);
+      });
+  }
+
+  if(kRun){
+    kRun.addEventListener("click", runKmeans);
+  }
+  // -------------------------
+  // DBSCAN change (prev vs curr)
+  // -------------------------
+  const chgPrev = document.getElementById("chg_prev");
+  const chgCurr = document.getElementById("chg_curr");
+  const chgRun = document.getElementById("chg_run");
+
+  const chgStatus = document.getElementById("chg_status");
+  const chgSummary = document.getElementById("chg_summary");
+  const chgSignal = document.getElementById("chg_signal");
+  const chgReflection = document.getElementById("chg_reflection");
+  const chgNote = document.getElementById("chg_note");
+  const chgRaw = document.getElementById("chg_raw");
+
+  function setChangeLoading(msg){
+    if(chgStatus) chgStatus.textContent = msg || "";
+    if(chgSummary) chgSummary.textContent = "";
+    if(chgSignal) chgSignal.textContent = "";
+    if(chgReflection) chgReflection.textContent = "";
+    if(chgNote) chgNote.textContent = "";
+    if(chgRaw) chgRaw.textContent = "";
+  }
+
+  function renderChange(data){
+    if(chgRaw) chgRaw.textContent = JSON.stringify(data || {}, null, 2);
+
+    if(!data || data.error){
+      if(chgStatus) chgStatus.textContent = data && data.error ? String(data.error) : "비교 데이터를 불러오지 못했습니다.";
+      return;
+    }
+
+    const ch = (data && data.change) ? data.change : null;
+    if(!ch){
+      if(chgStatus) chgStatus.textContent = "변화 요약이 없습니다.";
+      return;
+    }
+
+    if(chgStatus) chgStatus.textContent = "";
+    if(chgSummary) chgSummary.textContent = ch.change_summary || "";
+    if(chgSignal) chgSignal.textContent = ch.change_signal || "";
+    if(chgReflection) chgReflection.textContent = ch.reflection_prompt || "";
+    if(chgNote) chgNote.textContent = ch.note || "";
+  }
+
+  function runChange(){
+    const prevSid = chgPrev && chgPrev.value ? chgPrev.value : "1";
+    const currSid = chgCurr && chgCurr.value ? chgCurr.value : sid;
+
+    // 같은 회차 비교는 막기
+    if(prevSid === currSid){
+      setChangeLoading("");
+      if(chgStatus) chgStatus.textContent = "이전/현재 회차가 동일합니다. 다른 회차를 선택해 주세요.";
+      return;
+    }
+
+    const url = `/analysis/class/${code}/dbscan_change.json?prev=${encodeURIComponent(prevSid)}&curr=${encodeURIComponent(currSid)}`;
+    setChangeLoading("비교 요약을 불러오는 중…");
+
+    fetch(url)
+      .then(r => r.json())
+      .then(renderChange)
+      .catch(err => {
+        setChangeLoading("");
+        if(chgStatus) chgStatus.textContent = "비교 데이터를 불러오지 못했습니다.";
+        console.error(err);
+      });
+  }
+
+  // 초기값: "현재 sid - 1"을 prev로 자동 세팅(가능한 범위 내)
+  function initChangeSelectors(){
+    if(!chgPrev || !chgCurr) return;
+
+    const curr = parseInt(sid, 10);
+    const prev = isFinite(curr) ? Math.max(2, curr - 1) : 2;
+
+    chgCurr.value = String(curr);
+    chgPrev.value = String(prev);
+  }
+
+  initChangeSelectors();
+
+  if(chgRun){
+    chgRun.addEventListener("click", runChange);
+  }
+
+  // 현재 화면에 들어오면 자동으로 1회 비교 실행(교사 UX)
+  runChange();
+})();
+</script>
+
+{% endblock %}

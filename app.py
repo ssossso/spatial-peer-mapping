@@ -285,6 +285,13 @@ def init_db() -> None:
             """,
         ]))
 
+        # -------------------
+        # Migration v4: student creation timestamp
+        # -------------------
+        migrations.append((4, [
+            "ALTER TABLE students ADD COLUMN IF NOT EXISTS joined_at TIMESTAMP DEFAULT NOW();",
+        ]))
+
 
 
         migrations.sort(key=lambda x: int(x[0]))
@@ -457,6 +464,13 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
 
 
 SITE_TITLE = "내가 바라본 우리 반"
+DEFAULT_VISIBLE_SESSION_ID = "2"
+VISIBLE_SESSION_IDS = ["2", "3", "4"]
+
+
+def normalize_visible_session_id(raw: Any) -> str:
+    sid = str(raw or "").strip()
+    return sid if sid in VISIBLE_SESSION_IDS else DEFAULT_VISIBLE_SESSION_ID
 
 # JSON fallback file (only used if DB not configured)
 DATA_FILE = os.environ.get("DATA_FILE", "data.json")
@@ -2284,9 +2298,7 @@ def class_detail(code):
         return redirect("/teacher/login")
 
     code = (code or "").upper().strip()
-    sid = (request.args.get("sid") or session.get("selected_session") or "1").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    sid = normalize_visible_session_id(request.args.get("sid") or session.get("selected_session"))
     session["selected_session"] = sid
     session["selected_class"] = code
     return redirect(f"/teacher/class/{code}/v2?sid={sid}&open=1")
@@ -2299,9 +2311,7 @@ def class_detail_legacy(code):
 
     code = (code or "").upper().strip()
 
-    sid = (request.args.get("sid") or session.get("selected_session") or "1").strip()
-    if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+    sid = normalize_visible_session_id(request.args.get("sid") or session.get("selected_session"))
     session["selected_session"] = sid
 
     if engine:
@@ -2386,7 +2396,7 @@ def teacher_download_student_pin_pdf(code):
     if "teacher" not in session:
         return redirect(url_for("teacher_login"))
 
-    sid = request.args.get("sid") or "1"
+    sid = request.args.get("sid") or DEFAULT_VISIBLE_SESSION_ID
 
     # 권한 확인 + 학급명 확보
     cls = db_get_class_for_teacher(code, session["teacher"])
@@ -2422,9 +2432,7 @@ def class_detail_v2(code):
         return redirect("/teacher/login")
 
     code = (code or "").upper().strip()
-    sid = (request.args.get("sid") or session.get("selected_session") or "1").strip()
-    if sid not in ["1", "2", "3", "4"]:
-        sid = "1"
+    sid = normalize_visible_session_id(request.args.get("sid") or session.get("selected_session"))
     session["selected_session"] = sid
 
     open_panel = (request.args.get("open") or "").strip() == "1"
@@ -2501,7 +2509,7 @@ def teacher_sync_from_sheet(code):
         return redirect("/teacher/login")
 
     code = code.upper().strip()
-    sid = (request.args.get("sid") or session.get("selected_session") or "1").strip()
+    sid = normalize_visible_session_id(request.args.get("sid") or session.get("selected_session"))
 
     cls = db_get_class_for_teacher(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
@@ -2541,8 +2549,8 @@ def teacher_analysis_compare(code):
 
     cls = ensure_class_schema(cls)
 
-    # v2 기본 운영: 1~4차
-    sids = ["1", "2", "3", "4"]
+    # 3월 말(1회차)은 이번 운영에서 수집하지 않으므로 비교 화면에서는 숨긴다.
+    sids = list(VISIBLE_SESSION_IDS)
 
     return render_template(
         "teacher_analysis_compare.html",
@@ -2558,9 +2566,9 @@ def teacher_analysis(code):
         return redirect("/teacher/login")
 
     code = (code or "").upper().strip()
-    sid = (request.args.get("sid") or "1").strip()
+    sid = (request.args.get("sid") or DEFAULT_VISIBLE_SESSION_ID).strip()
     if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+        sid = DEFAULT_VISIBLE_SESSION_ID
 
     cls = db_get_class_for_teacher(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
@@ -3053,9 +3061,9 @@ def student_enter():
 
             session["code"] = code
             session["name"] = name
-            session["sid"] = "1"
+            session["sid"] = DEFAULT_VISIBLE_SESSION_ID
             session["selected_class"] = code
-            session["selected_session"] = "1"
+            session["selected_session"] = DEFAULT_VISIBLE_SESSION_ID
             return redirect("/student/write")
 
         d = load_data()
@@ -3065,9 +3073,9 @@ def student_enter():
 
         session["code"] = code
         session["name"] = name
-        session["sid"] = "1"
+        session["sid"] = DEFAULT_VISIBLE_SESSION_ID
         session["selected_class"] = code
-        session["selected_session"] = "1"
+        session["selected_session"] = DEFAULT_VISIBLE_SESSION_ID
         return redirect("/student/write")
 
     return render_template("student_enter.html")
@@ -3085,9 +3093,9 @@ def student_write():
     code = (session.get("code") or "").upper().strip()
     name = (session.get("name") or "").strip()
 
-    sid = (session.get("sid") or "1").strip()
+    sid = (session.get("sid") or DEFAULT_VISIBLE_SESSION_ID).strip()
     if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+        sid = DEFAULT_VISIBLE_SESSION_ID
         session["sid"] = sid
 
     if engine:
@@ -3246,9 +3254,9 @@ def teacher_placement_start(code):
         return redirect("/teacher/login")
 
     code = (code or "").upper().strip()
-    sid = (request.args.get("sid") or session.get("selected_session") or "1").strip()
+    sid = normalize_visible_session_id(request.args.get("sid") or session.get("selected_session"))
     if sid not in ["1", "2", "3", "4", "5"]:
-        sid = "1"
+        sid = DEFAULT_VISIBLE_SESSION_ID
 
     # ✅ 새로 작성(덮어쓰기 시작)은 ?new=1 로만 한다
     force_new = (request.args.get("new") or "").strip() == "1"
