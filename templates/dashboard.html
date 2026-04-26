@@ -10,7 +10,7 @@
   {% if not classes %}
     <p style="text-align:center; color:#666;">아직 생성한 학급이 없습니다.</p>
   {% else %}
-    <ul>
+    <ul style="line-height:1.9;">
       {% for code, cls in classes.items() %}
         <li>
           <a href="/teacher/class/{{ code }}">{{ cls.name }}</a>
@@ -19,41 +19,35 @@
       {% endfor %}
     </ul>
 
-    <!-- ========================= -->
-    <!-- 학급 삭제 섹션 (기본 접힘) -->
-    <!-- ========================= -->
     <hr style="margin:16px 0; border:none; border-top:1px solid #e5e7eb;">
 
-    <details class="card" style="background:#ffffff; border:1px solid #ffffff;">
-      <summary style="cursor:pointer; font-weight:900; padding:0; margin:0; line-height:1.2;">
+    <details style="background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:12px;">
+      <summary style="cursor:pointer; font-weight:900; line-height:1.2;">
         학급 삭제
       </summary>
 
       <div style="margin-top:10px;">
         <div class="subtitle" style="margin:0 0 10px 0;">
-          삭제한 학급은 되돌릴 수 없습니다. (학생/제출 데이터 포함)
+          삭제한 학급은 되돌릴 수 없습니다. 학생 명단과 제출 데이터가 함께 삭제됩니다.
         </div>
 
         <form method="post" action="/teacher/class/delete"
               onsubmit="return confirmDeleteClass();"
               style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
 
-          <select name="code" id="deleteClassSelect"
-                  style="padding:10px; border-radius:10px; border:1px solid #d1d5db; min-width:220px;">
+          <select name="code" id="deleteClassSelect" style="min-width:220px; flex:1;">
             <option value="">삭제할 학급 선택</option>
             {% for code, cls in classes.items() %}
               <option value="{{ code }}">{{ cls.name }} ({{ code }})</option>
             {% endfor %}
           </select>
 
-          <button type="submit"
-                  style="background:#b91c1c; border:1px solid #991b1b; color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer;">
+          <button type="submit" style="background:#b91c1c;">
             선택 학급 삭제
           </button>
         </form>
       </div>
     </details>
-
 
     <script>
       function confirmDeleteClass(){
@@ -63,7 +57,7 @@
           alert('삭제할 학급을 먼저 선택해 주세요.');
           return false;
         }
-        return confirm('정말 삭제할까요?\n삭제 후 되돌릴 수 없습니다.');
+        return confirm('정말 삭제할까요? 삭제 후에는 되돌릴 수 없습니다.');
       }
     </script>
   {% endif %}

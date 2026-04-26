@@ -3,22 +3,28 @@
 <div class="card">
   <h2>학급 생성</h2>
   <form method="post">
-    학급 이름<br>
+    <label style="display:block; text-align:left; font-weight:800; margin-bottom:6px;">학급 이름</label>
     <input name="class_name" placeholder="예: 2026학년도 6학년 1반"><br><br>
 
-    학생 명단(엑셀이나 구글시트에서 붙여넣기)<br>
+    <div style="text-align:left; font-weight:800; margin-bottom:8px;">학생 명단</div>
+    <div class="subtitle" style="text-align:left; margin-bottom:10px;">
+      번호, 이름, 성별을 입력해 주세요. 엑셀이나 구글 시트에서 복사해 붙여넣을 수 있습니다.
+    </div>
+
     <div style="text-align:left; margin-top:8px;">
       <style>
-        .grid-wrap{ border:1px solid #d7dbe7; border-radius:10px; overflow:hidden; background:#fff; }
-        table.student-grid{ width:100%; border-collapse:collapse; table-layout:fixed; }
-        table.student-grid th, table.student-grid td{ border-bottom:1px solid #eef1f7; border-right:1px solid #eef1f7; padding:8px; }
-        table.student-grid th:last-child, table.student-grid td:last-child{ border-right:none; }
-        table.student-grid tr:last-child td{ border-bottom:none; }
-        table.student-grid th{ background:#f6f8ff; font-size:13px; text-align:left; }
-        .grid-input{ width:100%; padding:8px; border-radius:8px; border:1px solid #cfd6ea; box-sizing:border-box; font-size:14px; }
-        .grid-actions{ display:flex; gap:8px; margin-top:10px; }
-        .grid-actions button{ width:auto; padding:10px 14px; font-size:14px; }
-        .hint{ font-size:12px; color:#666; margin-top:8px; line-height:1.5; }
+        .grid-wrap { border:1px solid #d7dbe7; border-radius:10px; overflow:hidden; background:#fff; }
+        table.student-grid { width:100%; border-collapse:collapse; table-layout:fixed; }
+        table.student-grid th,
+        table.student-grid td { border-bottom:1px solid #eef1f7; border-right:1px solid #eef1f7; padding:8px; }
+        table.student-grid th:last-child,
+        table.student-grid td:last-child { border-right:none; }
+        table.student-grid tr:last-child td { border-bottom:none; }
+        table.student-grid th { background:#f6f8ff; font-size:13px; text-align:left; }
+        .grid-input { width:100%; padding:8px; border-radius:8px; border:1px solid #cfd6ea; box-sizing:border-box; font-size:14px; }
+        .grid-actions { display:flex; gap:8px; margin-top:10px; }
+        .grid-actions button { width:auto; padding:10px 14px; font-size:14px; }
+        .hint { font-size:12px; color:#666; margin-top:8px; line-height:1.5; }
       </style>
 
       <div class="grid-wrap">
@@ -31,22 +37,21 @@
             </tr>
           </thead>
           <tbody id="studentGridBody">
-            <!-- JS로 기본 20줄 생성 -->
           </tbody>
         </table>
       </div>
 
       <div class="grid-actions">
-        <button type="button" id="addRowBtn">줄(학생) 추가</button>
+        <button type="button" id="addRowBtn">줄 추가</button>
       </div>
 
       <div class="hint">
-        - 기본으로 20줄(20명)을 제공합니다. 더 필요하면 “줄(학생) 추가”를 누르세요.<br>
-        - <b>이름이 비어있는 줄</b>은 자동으로 제외됩니다.<br>
+        - 기본으로 20줄이 제공됩니다. 필요하면 줄 추가를 눌러 주세요.<br>
+        - 이름이 비어 있는 줄은 자동으로 제외됩니다.<br>
+        - 성별은 남 또는 여로 입력해 주세요.
       </div>
     </div>
 
-    <!-- 서버로 전달되는 값 -->
     <textarea name="students" id="students_hidden" style="display:none;"></textarea>
 
     <br>
@@ -76,14 +81,14 @@
     const nm = document.createElement('input');
     nm.type = 'text';
     nm.className = 'grid-input';
-    nm.placeholder = '예: 홍길동';
+    nm.placeholder = '예: 김민준';
     tdName.appendChild(nm);
 
     const tdGender = document.createElement('td');
     const g = document.createElement('input');
     g.type = 'text';
     g.className = 'grid-input';
-    g.placeholder = '예: 남 / 여';
+    g.placeholder = '남 / 여';
     tdGender.appendChild(g);
 
     tr.appendChild(tdNo);
@@ -93,7 +98,7 @@
   }
 
   function initRows(n){
-    for(let i=1;i<=n;i++) body.appendChild(makeRow(i));
+    for(let i = 1; i <= n; i++) body.appendChild(makeRow(i));
   }
 
   function serializeStudents(){
@@ -102,7 +107,6 @@
 
     for(let idx = 0; idx < rows.length; idx++){
       const inputs = rows[idx].querySelectorAll('input');
-
       const noInput = inputs[0];
       const nameInput = inputs[1];
       const genderInput = inputs[2];
@@ -116,8 +120,8 @@
       const gender = (genderInput.value || '').trim();
       if(!gender){
         genderInput.focus();
-        alert(`${idx + 1}번째 줄: 성별이 입력되지 않았습니다. (남 / 여)`);
-        throw new Error("gender_required");
+        alert(`${idx + 1}번째 줄의 성별을 입력해 주세요. (남/여)`);
+        throw new Error('gender_required');
       }
 
       lines.push(`${no}\t${name}\t${gender}`);
@@ -128,9 +132,9 @@
 
   if(formEl){
     formEl.addEventListener('submit', (e) => {
-      try{
+      try {
         serializeStudents();
-      }catch(err){
+      } catch(err) {
         e.preventDefault();
       }
     });
@@ -143,7 +147,6 @@
     body.appendChild(makeRow(nextIdx));
   });
 
-  // 엑셀 / 구글시트 / 한글 표 복붙 지원
   body.addEventListener('paste', (e) => {
     const target = e.target;
     if(!(target instanceof HTMLInputElement)) return;

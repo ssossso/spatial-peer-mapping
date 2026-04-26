@@ -2,123 +2,74 @@
 {% block content %}
 
 <style>
-  /* ===== 공통 라벨: 전부 같은 글씨체/크기 ===== */
-  .form-label{
-    font-size:14px;
-    font-weight:500;
-    color:#111827;
-    margin:0 0 6px 0;
+  .form-label {
+    font-size: 14px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 6px 0;
+    text-align: left;
   }
 
-  .field{
-    margin-bottom:14px;
+  .field { margin-bottom: 14px; text-align: left; }
+
+  .research-outer {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fafafa;
+    padding: 14px;
+    margin-bottom: 14px;
+    text-align: left;
   }
 
-  /* ===== 연구용(정보) 박스 ===== */
-  .research-outer{
-    border:1px solid #e5e7eb;
-    border-radius:14px;
-    background:#fafafa;
-    padding:14px;
-    margin-bottom:14px;
+  .research-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+    padding: 12px;
   }
 
-  .research-box{
-    border:1px solid #e5e7eb;
-    border-radius:12px;
-    background:#fff;
-    padding:12px;
+  .research-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
   }
 
-  /* (보정) 연구 박스 내부 항목 간 간격 일정 */
-  .research-stack{
-    display:flex;
-    flex-direction:column;
-    gap:14px;
+  .r-help {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    line-height: 1.45;
+    margin: 0 0 8px 0;
   }
 
-  .r-field{
-    display:flex;
-    flex-direction:column;
+  .choice-box {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    background: #fff;
+    box-sizing: border-box;
   }
 
-  .r-help{
-    font-size:12px;
-    font-weight:500;
-    color:#6b7280;
-    line-height:1.35;
-    margin:0 0 8px 0;
+  .radio-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    column-gap: 12px;
+    row-gap: 8px;
   }
 
-  /* (보정) 연구 박스 내부 input을 base.html input과 동일 규격으로 강제 */
-  .research-box input{
-    padding:10px;            /* base input과 동일 */
-    border-radius:8px;       /* base input과 동일 */
-    border:1px solid #ccc;   /* base input과 동일 */
-    width:100%;
-    box-sizing:border-box;
+  .radio-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    white-space: nowrap;
+    font-weight: 700;
   }
 
-  /* 라디오 선택지: 가운데 정렬 + 줄바꿈 row-gap */
-  .radio-row{
-    display:flex;
-    flex-wrap:wrap;
-    align-items:center;
-    justify-content:center;
-    column-gap:12px;
-    row-gap:8px;
-  }
-
-  .radio-row label{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    margin:0;
-    white-space:nowrap;
-    font-weight:400;
-  }
-
-  /* (요청) 라디오 영역을 input처럼 보이는 박스 안에 */
-  .choice-box{
-    width:100%;
-    padding:10px;
-    border-radius:8px;
-    border:1px solid #ccc;
-    background:#fff;
-    box-sizing:border-box;
-  }
-
-  /* ===== 비밀번호 눈 아이콘 위치 고정 + (A1) 토글해도 흔들림 방지 ===== */
-  .pw-wrap{ position:relative; width:100%; }
-  .pw-input-in{ padding-right:44px; }
-
-  .pw-in-toggle{
-    position:absolute;
-    top:50%;
-    right:10px;
-    transform:translateY(-50%);
-    width:28px;
-    height:28px;
-    padding:0;
-    border:none;
-    background:transparent;
-    cursor:pointer;
-    /* 버튼 내부 겹침 아이콘의 기준 */
-    position:absolute;
-  }
-
-  /* (A1 핵심) 두 아이콘 span을 같은 좌표에 겹쳐 고정 */
-  .pw-in-toggle .eye-icon{
-    position:absolute;
-    inset:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-  }
-
-  .pw-in-toggle .eye-icon svg{
-    display:block;
-  }
+  .radio-row input { width: auto; }
 </style>
 
 <div class="card">
@@ -126,21 +77,18 @@
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
 
   <form method="post">
-
-    <!-- 아이디 -->
     <div class="field">
       <div class="form-label">아이디</div>
       <input name="username" autocomplete="username">
     </div>
 
-    <!-- 비밀번호 -->
     <div class="field">
       <div class="form-label">비밀번호</div>
       <div class="pw-wrap">
         <input id="pwInput" type="password" name="password"
                autocomplete="new-password" class="pw-input-in">
         <button id="pwToggleBtn" class="pw-in-toggle" type="button"
-                aria-label="비밀번호 표시 전환" aria-pressed="false">
+                aria-label="비밀번호 보기/숨기기" aria-pressed="false">
           <span id="eyeOn" class="eye-icon is-active" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                  xmlns="http://www.w3.org/2000/svg">
@@ -166,14 +114,13 @@
       </div>
     </div>
 
-    <!-- 비밀번호 확인 -->
     <div class="field">
       <div class="form-label">비밀번호 확인</div>
       <div class="pw-wrap">
         <input id="pw2Input" type="password" name="password2"
                autocomplete="new-password" class="pw-input-in">
         <button id="pw2ToggleBtn" class="pw-in-toggle" type="button"
-                aria-label="비밀번호 확인 표시 전환" aria-pressed="false">
+                aria-label="비밀번호 확인 보기/숨기기" aria-pressed="false">
           <span id="eye2On" class="eye-icon is-active" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                  xmlns="http://www.w3.org/2000/svg">
@@ -201,49 +148,38 @@
 
     <hr style="margin:18px 0; border:none; border-top:1px solid #e5e7eb;">
 
-    <!-- 연구용 정보 전체 박스 -->
     <div class="research-outer">
-
-      <div style="font-size:12px; font-weight:700; color:#6b7280; line-height:1.45; margin-bottom:12px;">
-        이건 소히가 논문에 써 먹으려고 수집하는 정보입니당 &gt;&lt;<br>
-        실제 논문에서는 모두 익명화됩니다.<br>
-        도움을 주셔서 정말 감사합니다💙
+      <div class="subtitle" style="margin-bottom:12px;">
+        연구 기록과 운영 확인을 위한 추가 정보입니다. 실제 학생 조사에서는 교사 정보가 학생에게 공개되지 않습니다.
       </div>
 
       <div class="research-box">
         <div class="research-stack">
-
-          <!-- 이름 -->
-          <div class="r-field">
+          <div>
             <div class="form-label">이름</div>
-            <div class="r-help">
-              실명, 연구 끝나고 인터뷰 요청할 때 데이터 매칭 용도로 사용합니다.<br>소히가 알아볼 수 있는 별명도 괜차나요.
-            </div>
+            <div class="r-help">운영자가 교사 계정을 확인할 때 사용하는 이름입니다.</div>
             <input name="research_name" required>
           </div>
 
-          <!-- 학교 -->
-          <div class="r-field">
+          <div>
             <div class="form-label">학교</div>
             <input name="research_school" required>
           </div>
 
-          <!-- 교직경력 -->
-          <div class="r-field">
-            <div class="form-label">나의 교직경력은?</div>
+          <div>
+            <div class="form-label">교직 경력</div>
             <div class="choice-box">
               <div class="radio-row">
-                <label><input type="radio" name="teaching_years" value="1-5" required>1–5년</label>
-                <label><input type="radio" name="teaching_years" value="6-10">6–10년</label>
-                <label><input type="radio" name="teaching_years" value="11-15">11–15년</label>
-                <label><input type="radio" name="teaching_years" value="16+">16년+</label>
+                <label><input type="radio" name="teaching_years" value="1-5" required>1-5년</label>
+                <label><input type="radio" name="teaching_years" value="6-10">6-10년</label>
+                <label><input type="radio" name="teaching_years" value="11-15">11-15년</label>
+                <label><input type="radio" name="teaching_years" value="16+">16년 이상</label>
               </div>
             </div>
           </div>
 
-          <!-- 담당학년 -->
-          <div class="r-field">
-            <div class="form-label">현재 담당 학년은?</div>
+          <div>
+            <div class="form-label">현재 담당 학년</div>
             <div class="choice-box">
               <div class="radio-row">
                 <label><input type="radio" name="current_grade" value="4" required>4학년</label>
@@ -252,7 +188,6 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>

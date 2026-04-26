@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from flask import Flask, jsonify, redirect, render_template, request, send_file, session
+from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session
 from io import BytesIO
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
@@ -556,6 +556,32 @@ def save_data_safely(d: Dict[str, Any]) -> None:
     for code, cls in list(d.get("classes", {}).items()):
         d["classes"][code] = ensure_class_schema(cls)
     save_data(d)
+
+
+def local_create_teacher(username: str, pw_hash: str, profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    d = load_data()
+    d.setdefault("teachers", {})
+    if username in d["teachers"]:
+        return {"status": "exists"}
+    d["teachers"][username] = {
+        "pw_hash": pw_hash,
+        "profile": profile or {},
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    }
+    save_data_safely(d)
+    return {"status": "ok"}
+
+
+def local_get_teacher(username: str) -> Dict[str, Any]:
+    d = load_data()
+    teacher = (d.get("teachers") or {}).get(username)
+    if not teacher:
+        return {"status": "not_found"}
+    return {
+        "status": "ok",
+        "pw_hash": teacher.get("pw_hash") or "",
+        "profile": teacher.get("profile") or {},
+    }
 
 
 def make_code() -> str:
@@ -1717,6 +1743,20 @@ def teacher_signup():
         # =========================================================
 
         pw_hash = generate_password_hash(pw)
+        profile = {
+            "teaching_years": teaching_years,
+            "current_grade": current_grade,
+            "research_name": research_name,
+            "research_school": research_school,
+        }
+
+        if not GOOGLE_SECRET:
+            resp = local_create_teacher(username, pw_hash, profile)
+            if resp.get("status") == "ok":
+                return redirect("/teacher/login")
+            if resp.get("status") == "exists":
+                return render_template("teacher_signup.html", error="이미 존재하는 아이디입니다.")
+            return render_template("teacher_signup.html", error=f"회원가입 실패: {resp}")
 
         try:
             resp = post_to_sheet({
@@ -1762,10 +1802,13 @@ def teacher_login():
         username = request.form.get("username", "").strip()
         pw = request.form.get("password", "")
 
-        try:
-            resp = post_to_sheet({"action": "teacher_get", "username": username})
-        except Exception as e:
-            return render_template("teacher_login.html", error=f"서버 통신 오류: {e}")
+        if not GOOGLE_SECRET:
+            resp = local_get_teacher(username)
+        else:
+            try:
+                resp = post_to_sheet({"action": "teacher_get", "username": username})
+            except Exception as e:
+                return render_template("teacher_login.html", error=f"서버 통신 오류: {e}")
 
         try:
             if resp.get("status") != "ok":
@@ -2287,7 +2330,16 @@ def class_detail_legacy(code):
         for _sid, meta in sorted(cls.get("sessions", {}).items(), key=lambda x: int(x[0])):
             session_links.append({"sid": _sid, "label": meta.get("label", f"{_sid}차"), "url": f"/s/{code}/{_sid}"})
 
-        return render_template("class_detail.html", cls=cls, code=code, rows=rows, sid=sid, session_links=session_links)
+        return render_template(
+            "class_detail_v2.html",
+            cls=cls,
+            code=code,
+            rows=rows,
+            sid=sid,
+            session_links=session_links,
+            open_panel=True,
+            teacher_run=None,
+        )
 
     # JSON fallback
     d = load_data()
@@ -2317,7 +2369,16 @@ def class_detail_legacy(code):
     for _sid, meta in sorted(cls.get("sessions", {}).items(), key=lambda x: int(x[0])):
         session_links.append({"sid": _sid, "label": meta.get("label", f"{_sid}차"), "url": f"/s/{code}/{_sid}"})
 
-    return render_template("class_detail.html", cls=cls, code=code, rows=rows, sid=sid, session_links=session_links)
+    return render_template(
+        "class_detail_v2.html",
+        cls=cls,
+        code=code,
+        rows=rows,
+        sid=sid,
+        session_links=session_links,
+        open_panel=True,
+        teacher_run=None,
+    )
 
 
 @app.route("/teacher/class/<code>/student_pin_pdf")
@@ -3067,11 +3128,11 @@ def student_write():
 
             resp = post_to_sheet({
                 "action": "result_upsert",
-                "teacher": session["teacher"],
+                "teacher": row.teacher_username,
                 "class_code": code,
-                "student": session["teacher"],  # 교사 행 고정 키
+                "student": name,
                 "session": str(sid),
-                "placements": placements_for_sheet,
+                "placements": placements_obj,
                 "ip": request.headers.get("X-Forwarded-For", request.remote_addr) or "",
             })
 
@@ -4528,4 +4589,3 @@ def db_get_students_with_pin(class_code: str):
             "pin_code": str(r[2] or "").strip(),
         })
     return out
-

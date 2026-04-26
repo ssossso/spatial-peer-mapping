@@ -3,17 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{{ title or "우리반 관계 지도" }}</title>
+  <title>{{ title or "내가 바라본 우리 반" }}</title>
 
   <style>
-    html {
-      scrollbar-gutter: stable;
-    }
+    html { scrollbar-gutter: stable; }
 
     body {
-      font-family: sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       margin: 0;
       background: #f4f6fa;
+      color: #111827;
       overflow-y: scroll;
     }
 
@@ -34,17 +33,18 @@
 
     .nav-side:first-child { text-align: left; font-size: 14px; }
     .nav-side:last-child { text-align: right; font-size: 14px; }
-    .nav-side a { text-decoration: none; color: #4a6cf7; font-weight: bold; }
-    
-    .nav-title { text-align: center; font-weight: bold; }
-    .nav-title a { text-decoration: none; color: #333; font-size: 18px; display: inline-block; line-height: 1.1; }
+    .nav-side a { text-decoration: none; color: #4a6cf7; font-weight: 800; }
+    .nav-title { text-align: center; font-weight: 900; }
+    .nav-title a {
+      text-decoration: none;
+      color: #333;
+      font-size: 18px;
+      display: inline-block;
+      line-height: 1.1;
+    }
 
-}
-
-
-    
     .muted { color: #666; font-weight: 600; margin-left: 8px; }
-    .content { margin-top: 100px; padding: 10px; }
+    .content { margin-top: 92px; padding: 10px; }
 
     .card {
       max-width: 500px;
@@ -54,37 +54,33 @@
       border-radius: 12px;
       text-align: center;
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      box-sizing: border-box;
     }
 
     .main-btn {
       display: block;
-      width: 200px;
+      width: 220px;
       margin: 15px auto;
       padding: 14px;
       background: #4a6cf7;
       color: white;
       text-decoration: none;
       font-size: 18px;
-      font-weight: bold;
-      border-radius: 12px;
+      font-weight: 800;
+      border-radius: 10px;
+      box-sizing: border-box;
     }
     .main-btn:hover { background: #3955c6; }
 
-    textarea {
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-
-    input {
+    textarea,
+    input,
+    select {
       padding: 10px;
       border-radius: 8px;
       border: 1px solid #ccc;
       width: 100%;
       box-sizing: border-box;
+      font: inherit;
     }
 
     button {
@@ -95,7 +91,7 @@
       border-radius: 8px;
       cursor: pointer;
       font-size: 16px;
-      font-weight: bold;
+      font-weight: 800;
       appearance: none;
       -webkit-appearance: none;
     }
@@ -103,188 +99,104 @@
 
     button:focus,
     button:focus-visible,
-    button:active {
-      outline: none !important;
-      box-shadow: none !important;
-      transform: none !important;
-    }
-
-    .error { color: #c0392b; font-weight: 700; margin-bottom: 10px; }
-
-    @media(max-width: 480px) {
-      .navbar { padding: 10px 14px; }
-      .nav-title a { font-size: 16px; }
-      .main-btn { width: 90%; font-size: 16px; }
-      button { width: 100%; }
-    }
-
-    /* -------------------------------------------------
-       Button system (global)
-       - btn-primary: 다음 단계 등 주요 진행
-       - btn-secondary: 배치 수정 / 돌아가기
-    ------------------------------------------------- */
-
-    .btn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:8px;
-      padding:10px 14px;
-      border-radius:12px;
-      font-weight:900;
-      font-size:14px;
-      text-decoration:none;
-      cursor:pointer;
-      border:1px solid #d1d5db;
-      background:#ffffff;
-      color:#111827;
-      box-sizing:border-box;
-      appearance:none;
-      -webkit-appearance:none;
-    }
-
-    .btn-secondary{
-      background:#ffffff;
-      border-color:#d1d5db;
-      color:#111827;
-    }
-
-    .btn-secondary:hover{
-      border-color:#9ca3af;
-      background:#ffffff;
-    }
-
-    .btn-primary{
-      background:#4a6cf7;
-      border-color:#4a6cf7;
-      color:#ffffff;
-    }
-
-    .btn-primary:hover{
-      background:#3955c6;
-      border-color:#3955c6;
-    }
-
-    .btn:focus,
-    .btn:focus-visible,
-    .btn:active{
-      outline:none !important;
-      box-shadow:none !important;
-      transform:none !important;
-    }
-    
-    
-    /* -------------------------------------------------
-       전역 클릭/탭 안정화 (button 제외)
-    ------------------------------------------------- */
-
-    a, .main-btn, .goto-btn, .pill {
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    a:active, a:focus,
-    .main-btn:active, .main-btn:focus,
-    .goto-btn:active, .goto-btn:focus,
-    .pill:active, .pill:focus {
-      transform: none !important;
-      outline: none;
-    }
-
-    /* transition 차단 대상에서 button 제거 */
-    a, .main-btn, .goto-btn, .pill {
-      transition: none !important;
-    }
-
+    button:active,
     a:focus,
     a:focus-visible {
-      outline: none !important;
-      box-shadow: none !important;
+      outline: 2px solid rgba(74, 108, 247, 0.35);
+      outline-offset: 2px;
       transform: none !important;
     }
 
-    /* -------------------------------------------------
-       Password toggle (shared)
-    ------------------------------------------------- */
-
-    .pw-wrap{
-      position: relative;
-      width: 100%;
+    .error,
+    .flash-error {
+      color: #b91c1c;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      font-weight: 800;
+      padding: 10px 12px;
+      margin-bottom: 12px;
     }
 
-    .pw-input-in{
-      width: 100%;
-      padding-right: 44px;
+    .flash-info {
+      color: #1f2937;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      font-weight: 700;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      font-weight: 600;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 800;
+      font-size: 14px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
       box-sizing: border-box;
     }
 
-    .pw-in-toggle{
+    .btn-secondary { background: #ffffff; border-color: #d1d5db; color: #111827; }
+    .btn-secondary:hover { border-color: #9ca3af; background: #ffffff; }
+    .btn-primary { background: #4a6cf7; border-color: #4a6cf7; color: #ffffff; }
+    .btn-primary:hover { background: #3955c6; border-color: #3955c6; }
+
+    .pw-wrap { position: relative; width: 100%; }
+    .pw-input-in { width: 100%; padding-right: 44px; box-sizing: border-box; }
+    .pw-in-toggle {
       position: absolute;
       top: 50%;
       right: 10px;
       transform: translateY(-50%);
-
       width: 28px;
       height: 28px;
       padding: 0;
       border: none;
       background: transparent;
-
       display: flex;
       align-items: center;
       justify-content: center;
-
       cursor: pointer;
       color: #6b7280;
-      transition: color 140ms ease;
-
       line-height: 0;
       font-size: 0;
       box-sizing: border-box;
-      flex-shrink: 0;
     }
-
-    .pw-in-toggle:hover{
-      color: #111827;
-    }
-
-    .pw-in-toggle:focus-visible{
-      outline: 2px solid rgba(59, 130, 246, 0.35);
-      outline-offset: 2px;
-      border-radius: 8px;
-      color: #111827;
-    }
-
-    .eye-icon{
+    .pw-in-toggle:hover { color: #111827; background: transparent; }
+    .eye-icon {
       position: absolute;
       inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       opacity: 0;
-      transform: scale(0.92);
-      transition: opacity 160ms ease, transform 160ms ease;
       pointer-events: none;
     }
+    .eye-icon.is-active { opacity: 1; }
+    .eye-icon svg { display: block; }
 
-    .eye-icon.is-active{
-      opacity: 1;
-      transform: scale(1);
-    }
-
-    .eye-icon svg{
-      display: block;
-    }
-
-    .pw-in-toggle, .pw-in-toggle *{
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    @media (prefers-reduced-motion: reduce){
-      .pw-in-toggle,
-      .eye-icon{
-        transition: none;
-      }
+    @media(max-width: 520px) {
+      .navbar { padding: 10px 14px; grid-template-columns: 1fr auto 1fr; }
+      .nav-title a { font-size: 16px; }
+      .main-btn { width: 100%; font-size: 16px; }
+      button { width: 100%; }
+      .card { padding: 16px; }
     }
   </style>
 
@@ -300,25 +212,16 @@
         function setState(show){
           input.type = show ? 'text' : 'password';
           btn.setAttribute('aria-pressed', show ? 'true' : 'false');
-
-          if (show){
-            eyeOn.classList.remove('is-active');
-            eyeOff.classList.add('is-active');
-          } else {
-            eyeOff.classList.remove('is-active');
-            eyeOn.classList.add('is-active');
-          }
+          eyeOn.classList.toggle('is-active', !show);
+          eyeOff.classList.toggle('is-active', show);
         }
 
         setState(false);
-
-        btn.addEventListener('click', () => {
-          setState(input.type === 'password');
-        });
+        btn.addEventListener('click', () => setState(input.type === 'password'));
       }
 
       document.addEventListener('DOMContentLoaded', () => {
-        bindPwToggle('pwInput',  'pwToggleBtn',  'eyeOn',  'eyeOff');
+        bindPwToggle('pwInput', 'pwToggleBtn', 'eyeOn', 'eyeOff');
         bindPwToggle('pw2Input', 'pw2ToggleBtn', 'eye2On', 'eye2Off');
       });
     })();
@@ -326,25 +229,22 @@
 </head>
 
 <body>
-<div class="navbar">
-  <div class="nav-side">
-    {% if session.teacher %}
-      <a href="/teacher/dashboard">내 학급</a>
-    {% endif %}
-    {% if current_class %}
-      <span class="muted">
-        <b>{{ current_class.name }}</b>
-        · {{ current_class.code }}
-      </span>
-    {% endif %}
-  </div>
+  <div class="navbar">
+    <div class="nav-side">
+      {% if session.teacher %}
+        <a href="/teacher/dashboard">내 학급</a>
+      {% endif %}
+      {% if current_class %}
+        <span class="muted">
+          <b>{{ current_class.name }}</b>
+          · {{ current_class.code }}
+        </span>
+      {% endif %}
+    </div>
 
-<div class="nav-title">
-  <a href="/">
-    우리반 관계 지도
-  </a>
-</div>
-
+    <div class="nav-title">
+      <a href="/">내가 바라본 우리 반</a>
+    </div>
 
     <div class="nav-side">
       {% if session.teacher %}
@@ -354,6 +254,15 @@
   </div>
 
   <div class="content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="card" style="text-align:left; margin-bottom:12px;">
+          {% for category, message in messages %}
+            <div class="flash-{{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
     {% block content %}{% endblock %}
   </div>
 </body>

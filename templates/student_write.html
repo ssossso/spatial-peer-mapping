@@ -1,19 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card" style="max-width:980px; text-align:left;">
-  <h2 style="margin:0 0 6px 0; text-align:center;">
-  내가 바라본 우리 반
-  </h2>
-<div style="text-align:center; font-size:12px; font-weight:700; color:#6b7280; margin:0 0 14px 0;">
-  {% if current_class %}
-    {{ current_class.name }}
-  {% endif %}
-</div>
+  <h2 style="margin:0 0 6px 0; text-align:center;">내가 바라본 우리 반</h2>
+
+  <div style="text-align:center; font-size:12px; font-weight:700; color:#6b7280; margin:0 0 14px 0;">
+    {% if current_class %}{{ current_class.name }}{% endif %}
+  </div>
 
   <p style="margin:0 0 14px 0; text-align:center;">
     <b>{{ name }}</b>
     <span class="muted" style="margin-left:8px;">
-      {{ session_meta.label if session_meta and session_meta.label else sid ~ '차' }}
+      {{ session_meta.label if session_meta and session_meta.label else sid ~ '회차' }}
     </span>
     {% if student_session.submitted %}
       <span class="status" style="margin-left:8px;">제출 완료</span>
@@ -23,9 +20,9 @@
   </p>
 
   <div class="subtitle" style="text-align:left; margin-bottom:12px;">
-    학생 목록에 있는 이름을 끌어서 아래 공간에 놓아 주세요.
-    가운데 있는 나를 기준으로 <b>가까울수록 친하다고 생각하는 친구</b>입니다.<br>
-    <b>자주 같이 다니는 친구들은 서로 가깝게 놓아주세요.</b>
+    아래 친구 이름을 흰 공간으로 옮겨 배치해 주세요.
+    가운데의 <b>나</b>를 기준으로 가까울수록 친하다고 느끼는 친구입니다.
+    자주 같이 노는 친구들은 서로 가깝게 놓아 주세요.
   </div>
 
   {% if error %}
@@ -33,56 +30,41 @@
   {% endif %}
 
   {% if teacher_view %}
-  <div class="subtitle" style="text-align:center; margin-bottom:12px;">
-    교사용 열람 화면입니다. (수정/제출 불가)
-  </div>
+    <div class="subtitle" style="text-align:center; margin-bottom:12px;">
+      교사용 열람 화면입니다. 이 화면에서는 수정하거나 제출할 수 없습니다.
+    </div>
   {% endif %}
 
   <form method="post" id="measureForm" onsubmit="return onSubmitMeasure();">
     <input type="hidden" name="placements_json" id="placements_json" value="">
 
-    <div style="display:grid; grid-template-columns: 1fr 260px; gap:12px; align-items:start;">
-      <!-- 캔버스 -->
+    <div class="measure-layout">
       <div>
-        <div id="canvas" style="position:relative; height:clamp(360px, 62vh, 520px); border:1px solid #d1d5db; border-radius:12px; background:#fff; overflow:hidden; touch-action:none;">
-          <!-- ✅ 안개 레이어(뒤) -->
-          <canvas id="fogLayer"
-            style="position:absolute; inset:0; width:100%; height:100%;
-                   pointer-events:none; z-index:1;"></canvas>
-
-          <!-- ✅ 중심(나) -->
-          <div id="selfDot" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:3;">
-            <div style="width:18px; height:18px; border-radius:999px; background:#4a6cf7; margin:auto;"></div>
-            <div style="font-size:12px; font-weight:800; margin-top:6px; text-align:center;">나</div>
+        <div id="canvas" class="map-canvas">
+          <div id="selfDot" aria-hidden="true">
+            <div class="self-dot"></div>
+            <div class="self-label">나</div>
           </div>
         </div>
 
-        <div class="muted" style="margin-top:8px; font-size:12px;">
-          팁: <b>느껴지는 거리감대로 편하게 배치해 주세요.<b> 친구를 평가하거나 점수를 매기는 활동은 아니에요.
+        <div class="muted" style="margin-top:8px; font-size:12px; display:block;">
+          친구를 평가하거나 점수를 매기는 활동이 아닙니다. 지금 느끼는 거리감을 편하게 표현해 주세요.
         </div>
       </div>
 
-      <!-- 학생 목록 -->
-      <div style="border:1px solid #e5e7eb; border-radius:12px; padding:10px; background:#fbfbfd; height:clamp(360px, 62vh, 520px); display:flex; flex-direction:column;">
-        <div style="font-weight:800; margin-bottom:10px;">학생 목록</div>
-        <div id="friendList" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; align-content:start; flex:1; min-height:0; overflow:auto; scrollbar-gutter:stable;">
+      <div class="friend-panel">
+        <div style="font-weight:900; margin-bottom:10px;">학생 목록</div>
+        <div id="friendList" class="friend-list">
           {% for f in friends %}
-          <div class="chip" data-name="{{ f }}"
-             style="user-select:none; cursor:grab; padding:8px 6px;
-                    border-radius:10px; border:1px solid #d1d5db;
-                    background:#ffffff;
-                    font-weight:600;
-                    font-size:12.5px;
-                    font-family:sans-serif;
-                    text-align:center; touch-action:none;">
-            {{ f }}
-          </div>
+            <button type="button" class="chip" data-name="{{ f }}">{{ f }}</button>
           {% endfor %}
         </div>
 
         <hr style="border:none; border-top:1px solid #e5e7eb; margin:12px 0;">
-        <div style="display:flex; gap:8px;">
-          {% if not student_session.submitted %}
+        <div class="small" id="progressText">배치한 친구: 0명 / {{ friends|length }}명</div>
+
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          {% if not student_session.submitted and not teacher_view %}
             <button type="submit" style="flex:1;">제출하기</button>
           {% else %}
             <button type="button" disabled style="flex:1; opacity:0.6;">제출 완료</button>
@@ -94,489 +76,248 @@
 </div>
 
 <style>
-  /* 클릭/터치 시 커지는 효과 방지 */
-  .chip, .token {
-    transform: none !important;
-    -webkit-tap-highlight-color: transparent;
-    transition: none !important;
+  .measure-layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 12px;
+    align-items: start;
   }
-  .chip:active, .token:active { transform: none !important; }
+
+  .map-canvas {
+    position: relative;
+    height: clamp(360px, 62vh, 520px);
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    background:
+      radial-gradient(circle at center, rgba(74,108,247,0.08), transparent 26%),
+      #fff;
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  #selfDot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 1;
+    text-align: center;
+  }
+
+  .self-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: #4a6cf7;
+    margin: auto;
+  }
+
+  .self-label {
+    font-size: 12px;
+    font-weight: 900;
+    margin-top: 6px;
+    color: #1f2937;
+  }
+
+  .friend-panel {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 10px;
+    background: #fbfbfd;
+    height: clamp(360px, 62vh, 520px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+
+  .friend-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    align-content: start;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .chip,
+  .token {
+    user-select: none;
+    cursor: grab;
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+    font-weight: 700;
+    font-size: 12.5px;
+    text-align: center;
+    touch-action: none;
+    box-sizing: border-box;
+  }
+
+  .chip:active,
+  .token:active { cursor: grabbing; }
+
+  .token {
+    position: absolute;
+    min-width: 58px;
+    max-width: 120px;
+    z-index: 3;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  }
+
+  .status {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  @media(max-width: 760px) {
+    .measure-layout { grid-template-columns: 1fr; }
+    .friend-panel { height: auto; min-height: 220px; }
+    .friend-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
 </style>
 
 <script>
-  const READONLY = {{ 'true' if student_session.submitted else 'false' }};
+  const READONLY = {{ 'true' if student_session.submitted or teacher_view else 'false' }};
   const friends = {{ friends|tojson }};
   const initialPlacements = {{ placements|tojson }};
 
   const canvas = document.getElementById('canvas');
   const friendList = document.getElementById('friendList');
   const placementsInput = document.getElementById('placements_json');
-
-  const fogLayer = document.getElementById('fogLayer');
-  const fogCtx = fogLayer ? fogLayer.getContext('2d', { willReadFrequently: true }) : null;
+  const progressText = document.getElementById('progressText');
+  const placements = {};
+  const tokens = new Map();
+  let dragging = null;
 
   function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
-  const EDGE_MARGIN = 6;
 
-  // ===============================
-  // Fog: "드롭했을 때만" Metaball 렌더
-  // - 캔버스에 토큰이 없으면 Fog OFF
-  // - 드래그 중에는 Fog 건드리지 않음(이전 상태 유지)
-  // ===============================
-  const META_THRESHOLD = 28;      // ✅ 요청값
-  const META_RADIUS = 78;         // 메타볼 퍼짐 반경(범위는 이 값이 결정)
-  const META_STRENGTH = 0.11;     // 누적 필드 농도(필드 쌓임)
-  const META_SOFT_EDGE = 55;      // 경계 부드러움(클수록 더 그라데이션)
-  const META_MAX_ALPHA = 90;      // ✅ 요청값(최종 진하기)
-  const FOG_GRAY = 90;            // 회색 톤
+  function canvasRect(){ return canvas.getBoundingClientRect(); }
 
-  let fogRaf = null;
-
-  function resizeFog(){
-    if (!fogLayer) return;
-    const r = canvas.getBoundingClientRect();
-    fogLayer.width = Math.max(1, Math.floor(r.width));
-    fogLayer.height = Math.max(1, Math.floor(r.height));
+  function normalizePlacement(v){
+    if (Array.isArray(v) && v.length >= 2) return { x: Number(v[0]) || 0, y: Number(v[1]) || 0 };
+    if (v && typeof v === 'object') return { x: Number(v.x) || 0, y: Number(v.y) || 0 };
+    return { x: 0, y: 0 };
   }
 
-  function getTokenCenters(){
-    const tokens = Array.from(canvas.querySelectorAll('.token'));
-    return tokens.map(t => ({
-      name: t.dataset.name,
-      x: (parseFloat(t.style.left || '0') + t.offsetWidth / 2),
-      y: (parseFloat(t.style.top  || '0') + t.offsetHeight / 2),
-    }));
+  function updateHidden(){
+    placementsInput.value = JSON.stringify(placements);
+    const count = Object.keys(placements).length;
+    progressText.textContent = `배치한 친구: ${count}명 / ${friends.length}명`;
   }
 
-  function clearFog(){
-    if (!fogLayer || !fogCtx) return;
-    fogCtx.clearRect(0, 0, fogLayer.width, fogLayer.height);
-  }
+  function placeToken(name, x, y){
+    let token = tokens.get(name);
+    if (!token) {
+      token = document.createElement('button');
+      token.type = 'button';
+      token.className = 'token';
+      token.dataset.name = name;
+      token.textContent = name;
+      token.disabled = READONLY;
+      canvas.appendChild(token);
+      tokens.set(name, token);
 
-  function scheduleMetaballFog(){
-    if (!fogLayer || !fogCtx) return;
-
-    if (fogRaf) cancelAnimationFrame(fogRaf);
-    fogRaf = requestAnimationFrame(() => {
-      fogRaf = null;
-      renderFogMetaballNow();
-    });
-  }
-
-    function renderFogMetaballNow(){
-    if (!fogLayer || !fogCtx) return;
-
-    const w = fogLayer.width, h = fogLayer.height;
-    fogCtx.clearRect(0, 0, w, h);
-
-    const pts = getTokenCenters();
-    if (pts.length === 0) {
-      // ✅ 토큰이 없으면 Fog 자체를 꺼버림
-      return;
+      token.addEventListener('pointerdown', startDrag);
     }
 
-    // ✅ 중심점(나)도 다른 토큰과 동일하게 fog 생성에 포함
-    pts.push({ name: '__self__', x: w / 2, y: h / 2 });
+    const rect = canvasRect();
+    const tokenWidth = token.offsetWidth || 70;
+    const tokenHeight = token.offsetHeight || 36;
+    const safeX = clamp(x, 6, rect.width - tokenWidth - 6);
+    const safeY = clamp(y, 6, rect.height - tokenHeight - 6);
 
-    // 1) 흰 필드 누적(겹치면 더 진해짐)
-    fogCtx.globalCompositeOperation = 'source-over';
-    for (const p of pts){
-      const r = META_RADIUS;
-      const g = fogCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-      g.addColorStop(0.00, `rgba(255,255,255,${META_STRENGTH})`);
-      g.addColorStop(0.55, `rgba(255,255,255,${META_STRENGTH * 0.6})`);
-      g.addColorStop(1.00, `rgba(255,255,255,0.0)`);
-      fogCtx.fillStyle = g;
-      fogCtx.beginPath();
-      fogCtx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      fogCtx.fill();
-    }
+    token.style.left = `${safeX}px`;
+    token.style.top = `${safeY}px`;
+    placements[name] = { x: Math.round(safeX), y: Math.round(safeY) };
 
+    const sourceChip = friendList.querySelector(`[data-name="${CSS.escape(name)}"]`);
+    if (sourceChip) sourceChip.style.display = 'none';
 
-    // 2) Soft threshold: 경계가 서서히 사라지는 그라데이션 덩어리
-    const img = fogCtx.getImageData(0, 0, w, h);
-    const d = img.data;
-
-    for (let i = 0; i < d.length; i += 4){
-      const a = d[i + 3]; // 누적 필드(0~255)
-
-      if (a <= META_THRESHOLD){
-        d[i + 3] = 0;
-        continue;
-      }
-
-      let t = (a - META_THRESHOLD) / META_SOFT_EDGE;
-      if (t < 0) t = 0;
-      if (t > 1) t = 1;
-
-      // smootherstep
-      t = t * t * (3 - 2 * t);
-
-      d[i]     = FOG_GRAY;
-      d[i + 1] = FOG_GRAY;
-      d[i + 2] = FOG_GRAY;
-      d[i + 3] = Math.round(t * META_MAX_ALPHA);
-    }
-
-    fogCtx.putImageData(img, 0, 0);
+    updateHidden();
   }
 
-  // ===============================
-  // 배치 데이터 저장(JSON hidden)
-  // ===============================
-  function syncPlacements(){
-    const cRect = canvas.getBoundingClientRect();
-    const center = { x: cRect.width/2, y: cRect.height/2 };
-    const out = {};
-    const tokens = canvas.querySelectorAll('.token');
+  function startDrag(e){
+    if (READONLY) return;
+    const source = e.currentTarget;
+    const name = source.dataset.name;
+    const rect = source.getBoundingClientRect();
+    const cRect = canvasRect();
 
-    tokens.forEach(t => {
-      const x = parseFloat(t.style.left || '0') + t.offsetWidth/2;
-      const y = parseFloat(t.style.top  || '0') + t.offsetHeight/2;
-      const relX = Math.round(x - center.x);
-      const relY = Math.round(y - center.y);
-      const dist = Math.sqrt(relX*relX + relY*relY);
-      out[t.dataset.name] = { x: relX, y: relY, d: Math.round(dist*100)/100 };
-    });
+    let token = tokens.get(name);
+    if (!token) {
+      token = document.createElement('button');
+      token.type = 'button';
+      token.className = 'token';
+      token.dataset.name = name;
+      token.textContent = name;
+      token.addEventListener('pointerdown', startDrag);
+      canvas.appendChild(token);
+      tokens.set(name, token);
+      token.style.left = `${Math.max(8, rect.left - cRect.left)}px`;
+      token.style.top = `${Math.max(8, rect.top - cRect.top)}px`;
+    }
 
-    placementsInput.value = JSON.stringify(out);
-    return out;
+    const tRect = token.getBoundingClientRect();
+    dragging = {
+      name,
+      token,
+      offsetX: e.clientX - tRect.left,
+      offsetY: e.clientY - tRect.top
+    };
+
+    token.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
   }
+
+  function moveDrag(e){
+    if (!dragging || READONLY) return;
+    const rect = canvasRect();
+    const x = e.clientX - rect.left - dragging.offsetX;
+    const y = e.clientY - rect.top - dragging.offsetY;
+    placeToken(dragging.name, x, y);
+  }
+
+  function endDrag(){
+    dragging = null;
+  }
+
+  friendList.querySelectorAll('.chip').forEach(chip => {
+    chip.disabled = READONLY;
+    chip.addEventListener('pointerdown', startDrag);
+  });
+
+  window.addEventListener('pointermove', moveDrag);
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+
+  Object.entries(initialPlacements || {}).forEach(([name, raw]) => {
+    if (!friends.includes(name)) return;
+    const p = normalizePlacement(raw);
+    placeToken(name, p.x, p.y);
+  });
+
+  updateHidden();
 
   function onSubmitMeasure(){
     if (READONLY) return false;
-    const p = syncPlacements();
-    const missing = friends.filter(n => !p[n]);
-    if (missing.length > 0){
-      alert('아직 배치하지 않은 친구가 있어요: ' + missing.join(', '));
+    const missing = friends.filter(name => !placements[name]);
+    if (missing.length > 0) {
+      alert(`아직 배치하지 않은 친구가 있습니다: ${missing.join(', ')}`);
       return false;
     }
-    return confirm('제출하면 수정할 수 없어요. 제출할까요?');
+    updateHidden();
+    return confirm('제출하면 수정할 수 없습니다. 제출할까요?');
   }
-
-  // ===============================
-  // 토큰 생성/드래그
-  // ===============================
-  function makeToken(name){
-    const el = document.createElement('div');
-    el.className = 'token';
-    el.dataset.name = name;
-    el.textContent = name;
-
-    el.style.fontWeight = '600';
-    el.style.fontSize = '12.5px';
-    el.style.fontFamily = 'sans-serif';
-    el.style.position = 'absolute';
-    el.style.left = '0px';
-    el.style.top  = '0px';
-    el.style.zIndex = '4';          // ✅ 안개 위
-    el.style.touchAction = 'none';
-    el.style.userSelect = 'none';
-    el.style.cursor = 'grab';
-
-    if (!READONLY) attachDrag(el);
-    return el;
-  }
-
-  function attachDrag(el){
-    let dragging = false;
-    let offsetX = 0, offsetY = 0;
-
-    el.addEventListener('pointerdown', (e) => {
-      if (READONLY) return;
-      dragging = true;
-      el.setPointerCapture?.(e.pointerId);
-      el.style.cursor = 'grabbing';
-      el.style.transform = 'none'; // 크기 변화 방지
-
-      const r = el.getBoundingClientRect();
-      offsetX = e.clientX - r.left;
-      offsetY = e.clientY - r.top;
-      e.preventDefault();
-    });
-
-    el.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-
-      const c = canvas.getBoundingClientRect();
-      let x = e.clientX - c.left - offsetX;
-      let y = e.clientY - c.top  - offsetY;
-
-      x = clamp(x, EDGE_MARGIN, c.width  - el.offsetWidth  - EDGE_MARGIN);
-      y = clamp(y, EDGE_MARGIN, c.height - el.offsetHeight - EDGE_MARGIN);
-
-      el.style.left = x + 'px';
-      el.style.top  = y + 'px';
-
-      // ✅ 드래그 중에는 Fog를 건드리지 않음(이전 상태 유지)
-      syncPlacements();
-      e.preventDefault();
-    });
-
-    el.addEventListener('pointerup', (e) => {
-      if (!dragging) return;
-      dragging = false;
-      el.style.cursor = 'grab';
-
-      // 학생 목록에 드롭하면 되돌리기
-      const fl = friendList.getBoundingClientRect();
-      const inFriendList =
-        (e.clientX >= fl.left && e.clientX <= fl.right &&
-         e.clientY >= fl.top  && e.clientY <= fl.bottom);
-
-      if (inFriendList){
-        const n = el.dataset.name;
-        el.remove();
-        if (window.addChipBack) window.addChipBack(n);
-        syncPlacements();
-
-        // ✅ 캔버스에 토큰이 없으면 Fog OFF
-        const left = canvas.querySelectorAll('.token').length;
-        if (left === 0) clearFog();
-        else scheduleMetaballFog();
-
-        return;
-      }
-
-      syncPlacements();
-      // ✅ 놓는 순간만 Metaball(뿌요뿌요)
-      scheduleMetaballFog();
-    });
-  }
-
-  // ===============================
-  // 초기 복원
-  // ===============================
-  function restoreInitial(){
-    const cRect = canvas.getBoundingClientRect();
-    const center = { x: cRect.width/2, y: cRect.height/2 };
-
-    const chips = Array.from(friendList.querySelectorAll('.chip'));
-    chips.forEach(chip => {
-      const n = chip.dataset.name;
-      if (initialPlacements && initialPlacements[n]){
-        chip.remove();
-      }
-    });
-
-    if (initialPlacements){
-      Object.keys(initialPlacements).forEach((n) => {
-        const v = initialPlacements[n];
-        const token = makeToken(n);
-
-        // 토큰 먼저 붙이고(offsetWidth 확보)
-        canvas.appendChild(token);
-
-        const px = clamp(center.x + (v.x || 0) - token.offsetWidth/2,
-                         EDGE_MARGIN, cRect.width - token.offsetWidth - EDGE_MARGIN);
-        const py = clamp(center.y + (v.y || 0) - token.offsetHeight/2,
-                         EDGE_MARGIN, cRect.height - token.offsetHeight - EDGE_MARGIN);
-
-        token.style.left = px + 'px';
-        token.style.top  = py + 'px';
-      });
-    }
-
-    syncPlacements();
-
-    // ✅ 초기에도 토큰이 있으면 Metaball, 없으면 Fog OFF
-    const count = canvas.querySelectorAll('.token').length;
-    if (count === 0) clearFog();
-    else scheduleMetaballFog();
-  }
-
-  // ===============================
-  // 칩 드래그(목록 → 캔버스)
-  // ===============================
-  function enableChipDragToCanvas(){
-    let draggingChip = null;
-    let placeholder = null;
-    let offsetX = 0, offsetY = 0;
-    let originParent = null;
-    let didDrop = false;
-    let activePointerId = null;
-
-    function resetChipStyles(chip){
-      chip.style.position = '';
-      chip.style.left = '';
-      chip.style.top = '';
-      chip.style.zIndex = '';
-      chip.style.width = '';
-      chip.style.height = '';
-      chip.style.transform = '';
-      chip.style.cursor = 'grab';
-      chip.style.opacity = '';
-    }
-
-    function cleanup(){
-      if (!draggingChip) return;
-
-      window.removeEventListener('pointermove', onMove, { passive: false });
-      window.removeEventListener('pointerup', onUp, { passive: false });
-      window.removeEventListener('pointercancel', onCancel);
-
-      try { draggingChip?.releasePointerCapture(activePointerId); } catch (e) {}
-
-      if (!didDrop){
-        resetChipStyles(draggingChip);
-        if (placeholder && originParent){
-          originParent.insertBefore(draggingChip, placeholder);
-          placeholder.remove();
-        }
-      } else {
-        placeholder?.remove();
-      }
-
-      placeholder = null;
-      originParent = null;
-      draggingChip = null;
-      didDrop = false;
-      activePointerId = null;
-    }
-
-    function placeTokenFromChip(chip, clientX, clientY){
-      const name = chip.dataset.name;
-      const c = canvas.getBoundingClientRect();
-      const token = makeToken(name);
-
-      // 토큰을 먼저 붙여 width/height 확보
-      canvas.appendChild(token);
-
-      let x = clientX - c.left - offsetX;
-      let y = clientY - c.top  - offsetY;
-
-      x = clamp(x, EDGE_MARGIN, c.width  - token.offsetWidth  - EDGE_MARGIN);
-      y = clamp(y, EDGE_MARGIN, c.height - token.offsetHeight - EDGE_MARGIN);
-
-      token.style.left = x + 'px';
-      token.style.top  = y + 'px';
-
-      syncPlacements();
-      scheduleMetaballFog(); // ✅ 드롭했으니 뿌요뿌요
-    }
-
-    function addChipBack(name){
-      if (READONLY) return;
-
-      const exists = Array.from(friendList.querySelectorAll('.chip')).some(c => c.dataset.name === name);
-      if (exists) return;
-
-      const chip = document.createElement('div');
-      chip.className = 'chip';
-      chip.dataset.name = name;
-      chip.style.userSelect = 'none';
-      chip.style.cursor = 'grab';
-      chip.style.padding = '8px 6px';
-      chip.style.borderRadius = '10px';
-      chip.style.border = '1px solid #d1d5db';
-      chip.style.background = '#ffffff';
-      chip.style.fontWeight = '600';
-      chip.style.fontSize = '12.5px';
-      chip.style.fontFamily = 'sans-serif';
-      chip.style.textAlign = 'center';
-      chip.style.touchAction = 'none';
-      chip.textContent = name;
-
-      const chips = Array.from(friendList.querySelectorAll('.chip'));
-      const myIdx = friends.indexOf(name);
-      let inserted = false;
-      for (const c of chips){
-        const idx = friends.indexOf(c.dataset.name);
-        if (idx > myIdx){
-          friendList.insertBefore(chip, c);
-          inserted = true;
-          break;
-        }
-      }
-      if (!inserted) friendList.appendChild(chip);
-    }
-    window.addChipBack = addChipBack;
-
-    function onMove(e){
-      if (!draggingChip) return;
-      draggingChip.style.left = (e.clientX - offsetX) + 'px';
-      draggingChip.style.top  = (e.clientY - offsetY) + 'px';
-      // ✅ 목록 드래그 중에도 Fog 건드리지 않음
-      e.preventDefault();
-    }
-
-    function onUp(e){
-      if (!draggingChip) return;
-
-      const c = canvas.getBoundingClientRect();
-      const inCanvas =
-        (e.clientX >= c.left && e.clientX <= c.right &&
-         e.clientY >= c.top  && e.clientY <= c.bottom);
-
-      if (inCanvas){
-        placeTokenFromChip(draggingChip, e.clientX, e.clientY);
-        draggingChip.remove();
-        didDrop = true;
-      }
-
-      cleanup();
-      // ✅ 드롭 안 했으면 Fog 변화 없음
-      e.preventDefault();
-    }
-
-    function onCancel(){ cleanup(); }
-
-    friendList.addEventListener('pointerdown', (e) => {
-      if (READONLY) return;
-      const chip = e.target.closest('.chip');
-      if (!chip) return;
-
-      draggingChip = chip;
-      didDrop = false;
-      activePointerId = e.pointerId;
-
-      const r = chip.getBoundingClientRect();
-      offsetX = e.clientX - r.left;
-      offsetY = e.clientY - r.top;
-
-      originParent = chip.parentElement;
-      placeholder = document.createElement('div');
-      placeholder.style.width = r.width + 'px';
-      placeholder.style.height = r.height + 'px';
-      placeholder.style.boxSizing = 'border-box';
-      placeholder.style.borderRadius = '10px';
-      placeholder.style.border = '1px dashed #e5e7eb';
-      placeholder.style.background = '#ffffff';
-      originParent.insertBefore(placeholder, chip);
-
-      chip.style.position = 'fixed';
-      chip.style.left = (e.clientX - offsetX) + 'px';
-      chip.style.top  = (e.clientY - offsetY) + 'px';
-      chip.style.zIndex = '9999';
-      chip.style.width = r.width + 'px';
-      chip.style.height = r.height + 'px';
-      chip.style.cursor = 'grabbing';
-      chip.style.opacity = '0.98';
-      chip.style.transform = 'translateZ(0)';
-      document.body.appendChild(chip);
-
-      try { chip.setPointerCapture(e.pointerId); } catch (err) {}
-
-      window.addEventListener('pointermove', onMove, { passive: false });
-      window.addEventListener('pointerup', onUp, { passive: false });
-      window.addEventListener('pointercancel', onCancel);
-
-      e.preventDefault();
-    });
-  }
-
-  window.addEventListener('load', () => {
-    enableChipDragToCanvas();
-    resizeFog();
-    setTimeout(() => { restoreInitial(); }, 0);
-  });
-
-  window.addEventListener('resize', () => {
-    resizeFog();
-    // ✅ 리사이즈 시에도 "토큰이 있으면"만 유지 렌더
-    const count = canvas.querySelectorAll('.token').length;
-    if (count === 0) clearFog();
-    else scheduleMetaballFog();
-  });
 </script>
 {% endblock %}

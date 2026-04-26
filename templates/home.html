@@ -4,12 +4,12 @@
   <h1 style="margin-top:6px;">{{ site_title }}</h1>
 
   {% if session.get("teacher") %}
-    <a class="main-btn" href="/teacher/dashboard">선생님(대시보드)</a>
+    <a class="main-btn" href="/teacher/dashboard">교사용 대시보드</a>
     <a class="main-btn" href="/teacher/logout">로그아웃</a>
   {% else %}
-    <a class="main-btn" href="/teacher/login">선생님</a>
+    <a class="main-btn" href="/teacher/login">교사 로그인</a>
   {% endif %}
 
-  <a class="main-btn" href="/student">학생</a>
+  <a class="main-btn" href="/student">학생 입장</a>
 </div>
 {% endblock %}

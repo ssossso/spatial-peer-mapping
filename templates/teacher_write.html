@@ -1,239 +1,217 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card" style="max-width:980px; text-align:left;">
-  <h2 style="margin:0 0 6px 0; text-align:center;">
-    {{ "선생님이 본 우리 반" }}
-  </h2>
+  <h2 style="margin:0 0 6px 0; text-align:center;">교사가 바라본 우리 반</h2>
 
   <p style="margin:0 0 14px 0; text-align:center;">
     <b>{{ run.teacher_username }}</b>
-    <span class="muted" style="margin-left:8px;">
-      {{ run.session_id }}차
-    </span>
-  {% if run.submitted %}
-    <span class="status" style="margin-left:8px;">마무리 완료</span>
-  {% elif placements_complete %}
-    <span class="status" style="margin-left:8px;">배치 저장됨</span>
-  {% else %}
-    <span class="muted" style="margin-left:8px;">작성 중</span>
-  {% endif %}
+    <span class="muted" style="margin-left:8px;">{{ run.session_id }}회차</span>
+    {% if run.submitted %}
+      <span class="status done" style="margin-left:8px;">마무리 완료</span>
+    {% elif placements_complete %}
+      <span class="status done" style="margin-left:8px;">배치 저장됨</span>
+    {% else %}
+      <span class="muted" style="margin-left:8px;">작성 중</span>
+    {% endif %}
   </p>
 
   <div class="subtitle" style="text-align:left; margin-bottom:12px;">
-    학생 목록의 학생 이름을 그대로 끌어서 아래 공간에 놓아 주세요. 서로 가까울수록 교사가 보기에 친밀한 관계입니다.
-    <div style="margin-top:6px; font-weight:800;">
-      모든 학생을 배치해 주세요.
-    </div>
+    학생 이름을 아래 공간으로 옮겨 교사가 인식하는 학급 관계를 배치해 주세요.
+    서로 가까울수록 교사가 보기에 친밀한 관계입니다. 이 화면은 학생 평가가 아니라 교사의 관찰을 정리하는 참고 자료입니다.
   </div>
 
   {% if error %}
     <div class="error">{{ error }}</div>
   {% endif %}
 
-  <!--
-    한 페이지 통합:
-    - 배치 저장(기존): /teacher/placement/{{ run.id }}  (현재 라우트)
-    - 기록 마무리 저장(기존 complete 라우트 유지): /teacher/placement/{{ run.id }}/complete
-    아래 form은 기본 action을 현재 페이지로 두고, "기록 저장" 클릭 시 JS에서 action을 complete로 변경합니다.
-  -->
   <form method="post" id="measureForm" onsubmit="return onSubmitMeasure();">
     <input type="hidden" name="placements_json" id="placements_json" value="">
 
-    <!-- 마무리 단계 입력(complete 라우트에 전송) -->
-    <input type="hidden" name="confidence_score" id="confidence_score" value="50">
-    <input type="hidden" name="priority_1" id="priority_1" value="">
-    <input type="hidden" name="priority_2" id="priority_2" value="">
-    <input type="hidden" name="priority_3" id="priority_3" value="">
-
-    <div style="display:grid; grid-template-columns: 1fr 260px; gap:12px; align-items:start;">
-      <!-- 캔버스 -->
+    <div class="measure-layout">
       <div>
-        <div id="canvas"
-             style="position:relative; height:clamp(360px, 62vh, 520px);
-                    border:1px solid #d1d5db; border-radius:12px;
-                    background:#fff; overflow:hidden; touch-action:none;">
-        </div>
-
-        <div class="muted" style="margin-top:8px; font-size:12px;">
-          팁: 방향은 상관 없이 서로에 대한 거리만 생각하시면 됩니다. 이 화면은 학생을 평가하거나 정답을 찾기 위한 것이 아니라, 교사의 관찰을 정리하기 위한 참고 자료입니다.
+        <div id="canvas" class="map-canvas"></div>
+        <div class="muted" style="margin-top:8px; font-size:12px; display:block;">
+          방향은 상관없고 학생 사이의 거리만 생각해 배치해 주세요.
         </div>
       </div>
 
-      <!-- 오른쪽 패널: (A) 학생 목록 / (B) 교사 관계 인식(마무리) -->
-      <div style="border:1px solid #e5e7eb; border-radius:12px; padding:10px; background:#fbfbfd;
-                  height:clamp(360px, 62vh, 520px); display:flex; flex-direction:column;">
-
-        <!-- (A) 학생 목록 패널 -->
-        <div id="panel_list" style="display:flex; flex-direction:column; flex:1; min-height:0;">
-          <div style="font-weight:800; margin-bottom:10px;">학생 목록</div>
-
-          <div id="friendList"
-               style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px;
-                      align-content:start; flex:1; min-height:0; overflow:auto; scrollbar-gutter:stable;">
-            {% for f in friends %}
-              <div class="chip" data-name="{{ f }}"
-                   style="user-select:none; cursor:grab; padding:8px 6px;
-                          border-radius:10px; border:1px solid #d1d5db;
-                          background:#ffffff; font-weight:600;
-                          font-size:12.5px; font-family:sans-serif;
-                          text-align:center; touch-action:none;">
-                {{ f }}
-              </div>
-            {% endfor %}
-          </div>
-
-          <hr style="border:none; border-top:1px solid #e5e7eb; margin:12px 0;">
-
-          <div style="display:flex; gap:8px;">
-            {% if readonly %}
-              <a class="btn" href="/teacher/placement/{{ run.id }}?edit=1"
-                 style="flex:1; text-align:center; display:inline-flex; align-items:center; justify-content:center;">
-                배치 수정
-              </a>
-            
-              <button type="button"
-                      class="tp-btn tp-btn-primary"
-                      id="btnNextStep"
-                      style="flex:1; text-align:center; display:inline-flex; align-items:center; justify-content:center;">
-                다음 단계
-              </button>
-            {% else %}
-            
-              <button type="submit" style="flex:1;">배치 저장</button>
-            {% endif %}
-          </div>
+      <div class="friend-panel">
+        <div style="font-weight:900; margin-bottom:10px;">학생 목록</div>
+        <div id="friendList" class="friend-list">
+          {% for f in friends %}
+            <button type="button" class="chip" data-name="{{ f }}">{{ f }}</button>
+          {% endfor %}
         </div>
 
-        <!-- (B) 교사 관계 인식(마무리) 패널 -->
-        <div id="panel_perception" style="display:none; flex-direction:column; flex:1; min-height:0;">
-          <div style="font-weight:900; margin-bottom:6px;">교사 관계 인식</div>
-          <div class="muted" style="font-size:12px; line-height:1.4; margin-bottom:12px;">
-            소히가 논문에 써먹을 수도 있는 거>< 대충 부담 없이 답 해주세요🙂 진짜 고마워요💙
-          </div>
+        <hr style="border:none; border-top:1px solid #e5e7eb; margin:12px 0;">
+        <div class="small" id="progressText">배치한 학생: 0명 / {{ friends|length }}명</div>
 
-          <!-- 확신도 -->
-          <div style="border:1px solid #e5e7eb; border-radius:12px; background:#fff; padding:10px; margin-bottom:10px;">
-            <div style="font-weight:800; margin-bottom:8px;">확신도</div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; color:#6b7280; margin:0 2px 3px 2px;">
-              <span>0</span><span>100</span>
-            </div>
-            <input id="confidence_slider" type="range" min="0" max="100" value="50" style="width:100%;">
-          </div>
-
-          <!-- 깃발(우선순위) -->
-          <div style="border:1px solid #e5e7eb; border-radius:12px; background:#fff; padding:10px; margin-bottom:10px;">
-            <div class="tp-title-2line">또래관계(갈등·고립) 측면에서 추가로 살펴볼 필요가 있다고 느낀 학생 선택</div>
-
-            <div style="display:flex; gap:10px; align-items:stretch; margin-bottom:8px;">
-              <button type="button" class="rankBtn" data-rank="1"
-                      style="flex:1; padding:10px 0; border-radius:12px; border:1px solid #d1d5db; background:#ffffff;
-                             font-weight:850; font-size:13px; cursor:pointer; color:#111827;">
-                1순위
-              </button>
-              <button type="button" class="rankBtn" data-rank="2"
-                      style="flex:1; padding:10px 0; border-radius:12px; border:1px solid #d1d5db; background:#ffffff;
-                             font-weight:850; font-size:13px; cursor:pointer; color:#111827;">
-                2순위
-              </button>
-              <button type="button" class="rankBtn" data-rank="3"
-                      style="flex:1; padding:10px 0; border-radius:12px; border:1px solid #d1d5db; background:#ffffff;
-                             font-weight:850; font-size:13px; cursor:pointer; color:#111827;">
-                3순위
-              </button>
-            </div>
-
-            <div class="muted" style="font-size:12px; line-height:1.45;">
-              순위 선택 → 왼쪽에서 학생 이름 선택
-            </div>
-          </div>
-
-          <!-- 저장 -->
-          <div style="display:flex; gap:8px; margin-top:auto;">
-            <button type="button" class="tp-btn tp-btn-secondary" id="btnBack">
-              돌아가기
-            </button>
-            <button type="submit" class="tp-btn tp-btn-primary" id="btnSave">기록 저장</button>
-          </div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          {% if readonly %}
+            <a class="btn" href="/teacher/placement/{{ run.id }}?edit=1" style="flex:1; text-align:center;">배치 수정</a>
+          {% else %}
+            <button type="submit" style="flex:1;">배치 저장</button>
+          {% endif %}
         </div>
-
       </div>
     </div>
   </form>
+
+  {% if placements_complete %}
+    <div class="finish-panel">
+      {% if run.submitted %}
+        <div style="font-weight:950;">마무리 기록이 저장되었습니다.</div>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="/teacher/class/{{ run.class_code }}?sid={{ run.session_id }}">회차 화면으로 돌아가기</a>
+        </div>
+      {% else %}
+        <form method="post" action="/teacher/placement/{{ run.id }}/complete">
+          <div style="font-weight:950; margin-bottom:10px;">교사 관계 인식 기록</div>
+
+          <label style="display:block; font-weight:900; margin-bottom:6px;">관계 판단에 대한 확신도</label>
+          <div style="display:flex; justify-content:space-between; font-size:12px; color:#6b7280; margin:0 2px 3px 2px;">
+            <span>0</span><span>100</span>
+          </div>
+          <input id="confidence_slider" type="range" min="0" max="100" value="50" style="width:100%;">
+          <input type="hidden" name="confidence_score" id="confidence_score" value="50">
+
+          <div style="font-weight:900; margin:16px 0 8px 0;">추가로 살펴볼 필요가 있다고 느끼는 학생</div>
+          <div class="priority-grid">
+            {% for rank in [1, 2, 3] %}
+              <label>
+                {{ rank }}순위
+                <select name="priority_{{ rank }}">
+                  <option value="">선택 안 함</option>
+                  {% for f in friends %}
+                    <option value="{{ f }}">{{ f }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            {% endfor %}
+          </div>
+
+          <div class="btn-row">
+            <button type="submit">마무리 저장</button>
+            <a class="btn" href="/teacher/class/{{ run.class_code }}?sid={{ run.session_id }}">돌아가기</a>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
 </div>
 
 <style>
-  /* 클릭/터치 시 커지는 효과 방지 */
-  .chip, .token {
-    transform: none !important;
-    -webkit-tap-highlight-color: transparent;
-    transition: none !important;
-  }
-  .chip:active, .token:active { transform: none !important; }
-
-  /* 마무리 단계에서 클릭 가능한 토큰 느낌 */
-  .token.clickable { cursor: pointer !important; }
-  .token .flag {
-    position:absolute;
-    left:50%;
-    top:-12px;
-    transform:translate(-50%, -100%);
-    font-size:11px;
-    font-weight:850;
-    padding:2px 6px;
-    border-radius:999px;
-    background:rgba(255,255,255,0.95);
-    border:1px solid #d1d5db;
-    display:none;
-    pointer-events:none;
-    white-space:nowrap;
+  .measure-layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 12px;
+    align-items: start;
   }
 
-  /* -------------------------------------------------
-     Teacher placement unified buttons
-     - Same size/shape for: 배치 수정 / 다음 단계 / 돌아가기 / 기록 저장
-  ------------------------------------------------- */
-  .tp-btn{
-    width:100%;
-    height:44px;
-    padding:0 14px;
-    border-radius:12px;
-    border:1px solid #d1d5db;
-    background:#ffffff;
-    color:#111827;
-    font-weight:900;
-    font-size:14px;
-    line-height:1;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    text-decoration:none;
-    box-sizing:border-box;
-    cursor:pointer;
-  }
-  .tp-btn:hover{ border-color:#9ca3af; }
-  .tp-btn-primary{
-    background:#4a6cf7;
-    border-color:#4a6cf7;
-    color:#ffffff;
-  }
-  .tp-btn-primary:hover{
-    background:#3955c6;
-    border-color:#3955c6;
-  }
-  .tp-btn:disabled{
-    opacity:0.55;
-    cursor:not-allowed;
-  }
-  .tp-title-2line{
-    font-weight:900;
-    font-size:13px;
-    line-height:1.35;
-    margin-bottom:8px;
-  }
-  .rankBtn{
-    color:#111827 !important;
+  .map-canvas {
+    position: relative;
+    height: clamp(360px, 62vh, 520px);
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+    touch-action: none;
   }
 
+  .friend-panel {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 10px;
+    background: #fbfbfd;
+    height: clamp(360px, 62vh, 520px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+
+  .friend-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    align-content: start;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .chip,
+  .token {
+    user-select: none;
+    cursor: grab;
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+    font-weight: 700;
+    font-size: 12.5px;
+    text-align: center;
+    touch-action: none;
+    box-sizing: border-box;
+  }
+
+  .token {
+    position: absolute;
+    min-width: 58px;
+    max-width: 120px;
+    z-index: 3;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  }
+
+  .status {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .status.done {
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+  }
+
+  .finish-panel {
+    margin-top: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px;
+    background: #fff;
+  }
+
+  .priority-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .priority-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 900;
+  }
+
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  @media(max-width: 760px) {
+    .measure-layout { grid-template-columns: 1fr; }
+    .friend-panel { height: auto; min-height: 220px; }
+    .friend-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .priority-grid { grid-template-columns: 1fr; }
+  }
 </style>
 
 <script>
@@ -244,495 +222,133 @@
   const canvas = document.getElementById('canvas');
   const friendList = document.getElementById('friendList');
   const placementsInput = document.getElementById('placements_json');
-
-  const panelList = document.getElementById('panel_list');
-  const panelPerception = document.getElementById('panel_perception');
-  const btnNextStep = document.getElementById('btnNextStep');
-  const btnBack = document.getElementById('btnBack');
-  const btnSavePerception = document.getElementById('btnSavePerception');
-
+  const progressText = document.getElementById('progressText');
   const confidenceSlider = document.getElementById('confidence_slider');
   const confidenceHidden = document.getElementById('confidence_score');
-
-  const h1 = document.getElementById('priority_1');
-  const h2 = document.getElementById('priority_2');
-  const h3 = document.getElementById('priority_3');
+  const placements = {};
+  const tokens = new Map();
+  let dragging = null;
 
   function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
-  const EDGE_MARGIN = 6;
+  function canvasRect(){ return canvas.getBoundingClientRect(); }
 
-  // 마무리 단계 상태
-  let PERCEPTION_STEP = false;
-
-  // 우선순위(깃발): 각 순위는 한 명만
-  const ranks = {1: null, 2: null, 3: null}; // 학생 이름
-  let activeRank = null;
-
-  function syncHidden(){
-    h1.value = ranks[1] || "";
-    h2.value = ranks[2] || "";
-    h3.value = ranks[3] || "";
-    confidenceHidden.value = String(Number(confidenceSlider?.value ?? 50));
+  function normalizePlacement(v){
+    if (Array.isArray(v) && v.length >= 2) return { x: Number(v[0]) || 0, y: Number(v[1]) || 0 };
+    if (v && typeof v === 'object') return { x: Number(v.x) || 0, y: Number(v.y) || 0 };
+    return { x: 0, y: 0 };
   }
 
-  function setActiveRank(r){
-    activeRank = r;
-    document.querySelectorAll('.rankBtn').forEach(btn => {
-      const rr = Number(btn.dataset.rank);
-      const on = (rr === activeRank);
-      btn.style.borderColor = on ? '#111827' : '#d1d5db';
-      btn.style.boxShadow = on ? '0 0 0 3px rgba(17, 24, 39, 0.10)' : 'none';
-      btn.style.background = on ? '#f9fafb' : '#ffffff';
-    });
+  function updateHidden(){
+    if (placementsInput) placementsInput.value = JSON.stringify(placements);
+    const count = Object.keys(placements).length;
+    if (progressText) progressText.textContent = `배치한 학생: ${count}명 / ${friends.length}명`;
   }
 
-  document.querySelectorAll('.rankBtn').forEach(btn => {
-    btn.addEventListener('click', () => setActiveRank(Number(btn.dataset.rank)));
+  function placeToken(name, x, y){
+    let token = tokens.get(name);
+    if (!token) {
+      token = document.createElement('button');
+      token.type = 'button';
+      token.className = 'token';
+      token.dataset.name = name;
+      token.textContent = name;
+      token.disabled = READONLY;
+      canvas.appendChild(token);
+      tokens.set(name, token);
+      token.addEventListener('pointerdown', startDrag);
+    }
+
+    const rect = canvasRect();
+    const tokenWidth = token.offsetWidth || 70;
+    const tokenHeight = token.offsetHeight || 36;
+    const safeX = clamp(x, 6, rect.width - tokenWidth - 6);
+    const safeY = clamp(y, 6, rect.height - tokenHeight - 6);
+
+    token.style.left = `${safeX}px`;
+    token.style.top = `${safeY}px`;
+    placements[name] = { x: Math.round(safeX), y: Math.round(safeY) };
+
+    const sourceChip = friendList.querySelector(`[data-name="${CSS.escape(name)}"]`);
+    if (sourceChip) sourceChip.style.display = 'none';
+
+    updateHidden();
+  }
+
+  function startDrag(e){
+    if (READONLY) return;
+    const source = e.currentTarget;
+    const name = source.dataset.name;
+    const rect = source.getBoundingClientRect();
+    const cRect = canvasRect();
+
+    let token = tokens.get(name);
+    if (!token) {
+      token = document.createElement('button');
+      token.type = 'button';
+      token.className = 'token';
+      token.dataset.name = name;
+      token.textContent = name;
+      token.addEventListener('pointerdown', startDrag);
+      canvas.appendChild(token);
+      tokens.set(name, token);
+      token.style.left = `${Math.max(8, rect.left - cRect.left)}px`;
+      token.style.top = `${Math.max(8, rect.top - cRect.top)}px`;
+    }
+
+    const tRect = token.getBoundingClientRect();
+    dragging = {
+      name,
+      token,
+      offsetX: e.clientX - tRect.left,
+      offsetY: e.clientY - tRect.top
+    };
+
+    token.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  }
+
+  function moveDrag(e){
+    if (!dragging || READONLY) return;
+    const rect = canvasRect();
+    const x = e.clientX - rect.left - dragging.offsetX;
+    const y = e.clientY - rect.top - dragging.offsetY;
+    placeToken(dragging.name, x, y);
+  }
+
+  function endDrag(){ dragging = null; }
+
+  friendList.querySelectorAll('.chip').forEach(chip => {
+    chip.disabled = READONLY;
+    chip.addEventListener('pointerdown', startDrag);
   });
 
-  confidenceSlider?.addEventListener('input', () => syncHidden());
+  window.addEventListener('pointermove', moveDrag);
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
 
-  function makeToken(name){
-    const el = document.createElement('div');
-    el.className = 'token';
-    el.dataset.name = name;
+  Object.entries(initialPlacements || {}).forEach(([name, raw]) => {
+    if (!friends.includes(name)) return;
+    const p = normalizePlacement(raw);
+    placeToken(name, p.x, p.y);
+  });
 
-    el.style.fontWeight = '600';
-    el.style.fontSize = '12.5px';
-    el.style.fontFamily = 'sans-serif';
+  updateHidden();
 
-    el.style.position = 'absolute';
-    el.style.left = '0px';
-    el.style.top = '0px';
-
-    el.style.touchAction = 'none';
-    el.style.userSelect = 'none';
-    el.style.cursor = 'grab';
-
-    // 깃발(마무리 단계 표시용)
-    const flag = document.createElement('div');
-    flag.className = 'flag';
-    el.appendChild(flag);
-
-    // 텍스트
-    const txt = document.createElement('div');
-    txt.textContent = name;
-    el.appendChild(txt);
-
-    if (!READONLY) attachDrag(el);
-
-    // 마무리 단계에서만 클릭으로 순위 지정
-    el.addEventListener('click', () => {
-      if (!PERCEPTION_STEP) return;
-      if (!activeRank) return;
-
-      const nm = el.dataset.name;
-
-      // 토글: 같은 학생이면 해제
-      if (ranks[activeRank] === nm) ranks[activeRank] = null;
-      else ranks[activeRank] = nm;
-
-      syncHidden();
-      refreshFlags();
+  if (confidenceSlider && confidenceHidden) {
+    confidenceSlider.addEventListener('input', () => {
+      confidenceHidden.value = String(confidenceSlider.value || 50);
     });
-
-    return el;
-  }
-
-  function attachDrag(el){
-    let dragging = false;
-    let offsetX = 0, offsetY = 0;
-
-    el.addEventListener('pointerdown', (e) => {
-      if (READONLY) return;
-      dragging = true;
-      el.setPointerCapture?.(e.pointerId);
-      el.style.cursor = 'grabbing';
-      el.style.transform = 'none';
-
-      const r = el.getBoundingClientRect();
-      offsetX = e.clientX - r.left;
-      offsetY = e.clientY - r.top;
-      e.preventDefault();
-    });
-
-    el.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      const c = canvas.getBoundingClientRect();
-      let x = e.clientX - c.left - offsetX;
-      let y = e.clientY - c.top - offsetY;
-
-      x = clamp(x, EDGE_MARGIN, c.width - el.offsetWidth - EDGE_MARGIN);
-      y = clamp(y, EDGE_MARGIN, c.height - el.offsetHeight - EDGE_MARGIN);
-
-      el.style.left = x + 'px';
-      el.style.top = y + 'px';
-      syncPlacements();
-      e.preventDefault();
-    });
-
-    el.addEventListener('pointerup', (e) => {
-      if (!dragging) return;
-      dragging = false;
-      el.style.cursor = 'grab';
-
-      // If dropped over student list, return to list
-      const fl = friendList.getBoundingClientRect();
-      const inFriendList =
-        (e.clientX >= fl.left && e.clientX <= fl.right && e.clientY >= fl.top && e.clientY <= fl.bottom);
-
-      if (inFriendList){
-        const n = el.dataset.name;
-        el.remove();
-        if (window.addChipBack) window.addChipBack(n);
-        syncPlacements();
-        return;
-      }
-
-      syncPlacements();
-    });
-  }
-
-  /**
-   * 저장 스키마(교사 배치):
-   * - 중심점 기준이 아니라 캔버스 내부 절대좌표로 저장
-   * - x, y는 "캔버스 내 token 중심점" (pixel)
-   * - w, h는 캔버스 크기 (pixel) 저장 (후처리에서 정규화/재현에 도움)
-   * - mode: 'abs'로 명시
-   */
-  function syncPlacements(){
-    const cRect = canvas.getBoundingClientRect();
-    const out = {};
-    const tokens = canvas.querySelectorAll('.token');
-
-    tokens.forEach(t => {
-      const cx = parseFloat(t.style.left || '0') + t.offsetWidth/2;
-      const cy = parseFloat(t.style.top || '0') + t.offsetHeight/2;
-      out[t.dataset.name] = {
-        x: Math.round(cx*100)/100,
-        y: Math.round(cy*100)/100,
-        w: Math.round(cRect.width*100)/100,
-        h: Math.round(cRect.height*100)/100,
-        mode: 'abs'
-      };
-    });
-
-    placementsInput.value = JSON.stringify(out);
-    return out;
   }
 
   function onSubmitMeasure(){
-    // 마무리 단계에서 "기록 저장"을 누른 경우:
-    if (PERCEPTION_STEP){
-      // complete 라우트로 전송
-      const form = document.getElementById('measureForm');
-      form.action = "/teacher/placement/{{ run.id }}/complete";
-      syncHidden();
-      syncPlacements();
-      return true;
-    }
-
-    // 일반 배치 저장(기존)
     if (READONLY) return false;
-
-    const p = syncPlacements();
-    const missing = friends.filter(n => !p[n]);
-
-    if (missing.length > 0){
-      alert('아직 배치되지 않은 학생이 있습니다. 모든 학생을 배치한 후 저장해 주세요.\n\n미배치: ' + missing.join(', '));
+    const missing = friends.filter(name => !placements[name]);
+    if (missing.length > 0) {
+      alert(`아직 배치하지 않은 학생이 있습니다: ${missing.join(', ')}`);
       return false;
     }
-
-    return confirm('배치를 저장하고 다음 단계(확신도/우선순위 입력)로 이동할까요?');
+    updateHidden();
+    return confirm('배치를 저장하고 다음 단계로 이동할까요?');
   }
-
-  function refreshFlags(){
-    const tokens = canvas.querySelectorAll('.token');
-    tokens.forEach(t => {
-      const nm = t.dataset.name;
-      const flag = t.querySelector('.flag');
-      if (!flag) return;
-
-      let r = null;
-      if (ranks[1] === nm) r = 1;
-      else if (ranks[2] === nm) r = 2;
-      else if (ranks[3] === nm) r = 3;
-
-      if (r){
-        flag.style.display = 'block';
-        flag.textContent = r + '위';
-        flag.style.borderColor = '#111827';
-      } else {
-        flag.style.display = 'none';
-        flag.textContent = '';
-        flag.style.borderColor = '#d1d5db';
-      }
-    });
-  }
-
-  function setPerceptionMode(on){
-    PERCEPTION_STEP = on;
-
-    if (on){
-      panelList.style.display = 'none';
-      panelPerception.style.display = 'flex';
-
-      // 토큰 클릭 가능 표시
-      canvas.querySelectorAll('.token').forEach(t => t.classList.add('clickable'));
-      syncHidden();
-      refreshFlags();
-    } else {
-      panelPerception.style.display = 'none';
-      panelList.style.display = 'flex';
-      canvas.querySelectorAll('.token').forEach(t => t.classList.remove('clickable'));
-    }
-  }
-
-  btnNextStep?.addEventListener('click', () => setPerceptionMode(true));
-  btnBack?.addEventListener('click', () => setPerceptionMode(false));
-
-  /**
-   * 초기 배치 복원 (하위호환 포함)
-   * - 신규: {name: {x, y, mode:'abs', ...}}  => x,y를 절대좌표로 사용
-   * - 구버전: {name: {x(rel), y(rel), d, ...}} => 중심점 기준 상대좌표로 해석하고 절대좌표로 변환
-   */
-  function restoreInitial(){
-    const cRect = canvas.getBoundingClientRect();
-    const center = { x: cRect.width/2, y: cRect.height/2 };
-
-    // Remove chips that are already placed
-    const chips = friendList ? Array.from(friendList.querySelectorAll('.chip')) : [];
-    chips.forEach(chip => {
-      const n = chip.dataset.name;
-      if (initialPlacements && initialPlacements[n]){
-        chip.remove();
-      }
-    });
-
-    if (initialPlacements){
-      Object.keys(initialPlacements).forEach((n) => {
-        const v = initialPlacements[n];
-        const token = makeToken(n);
-
-        // determine absolute center position
-        let absCx = null, absCy = null;
-
-        if (v && v.mode === 'abs' && typeof v.x === 'number' && typeof v.y === 'number'){
-          // new absolute storage
-          absCx = v.x;
-          absCy = v.y;
-        } else if (v && typeof v.x === 'number' && typeof v.y === 'number'){
-          // backward compatibility: treat x,y as relative-to-center
-          absCx = center.x + v.x;
-          absCy = center.y + v.y;
-        } else {
-          // fallback: place near center
-          absCx = center.x;
-          absCy = center.y;
-        }
-
-        // convert center to top-left
-        const px = clamp(absCx - token.offsetWidth/2, EDGE_MARGIN, cRect.width - token.offsetWidth - EDGE_MARGIN);
-        const py = clamp(absCy - token.offsetHeight/2, EDGE_MARGIN, cRect.height - token.offsetHeight - EDGE_MARGIN);
-        token.style.left = px + 'px';
-        token.style.top = py + 'px';
-        canvas.appendChild(token);
-      });
-    }
-    syncPlacements();
-  }
-
-  function enableChipDragToCanvas(){
-    if (!friendList) return;
-
-    let draggingChip = null;
-    let placeholder = null;
-    let offsetX = 0, offsetY = 0;
-    let originParent = null;
-    let didDrop = false;
-    let activePointerId = null;
-
-    function resetChipStyles(chip){
-      chip.style.position = '';
-      chip.style.left = '';
-      chip.style.top = '';
-      chip.style.zIndex = '';
-      chip.style.width = '';
-      chip.style.height = '';
-      chip.style.transform = '';
-      chip.style.cursor = 'grab';
-      chip.style.opacity = '';
-    }
-
-    function cleanup(){
-      if (!draggingChip) return;
-
-      window.removeEventListener('pointermove', onMove, { passive: false });
-      window.removeEventListener('pointerup', onUp, { passive: false });
-      window.removeEventListener('pointercancel', onCancel);
-
-      try { draggingChip?.releasePointerCapture(activePointerId); } catch (e) {}
-
-      if (!didDrop){
-        resetChipStyles(draggingChip);
-        if (placeholder && originParent){
-          originParent.insertBefore(draggingChip, placeholder);
-          placeholder.remove();
-        }
-      } else {
-        placeholder?.remove();
-      }
-
-      placeholder = null;
-      originParent = null;
-      draggingChip = null;
-      didDrop = false;
-      activePointerId = null;
-    }
-
-    function placeTokenFromChip(chip, clientX, clientY){
-      const name = chip.dataset.name;
-      const c = canvas.getBoundingClientRect();
-      const token = makeToken(name);
-
-      let x = clientX - c.left - offsetX;
-      let y = clientY - c.top - offsetY;
-
-      x = clamp(x, EDGE_MARGIN, c.width - token.offsetWidth - EDGE_MARGIN);
-      y = clamp(y, EDGE_MARGIN, c.height - token.offsetHeight - EDGE_MARGIN);
-
-      token.style.left = x + 'px';
-      token.style.top = y + 'px';
-      canvas.appendChild(token);
-      syncPlacements();
-    }
-
-    function addChipBack(name){
-      if (READONLY) return;
-      const exists = Array.from(friendList.querySelectorAll('.chip')).some(c => c.dataset.name === name);
-      if (exists) return;
-
-      const chip = document.createElement('div');
-      chip.className = 'chip';
-      chip.dataset.name = name;
-
-      chip.style.userSelect = 'none';
-      chip.style.cursor = 'grab';
-      chip.style.padding = '8px 6px';
-      chip.style.borderRadius = '10px';
-      chip.style.border = '1px solid #d1d5db';
-      chip.style.background = '#ffffff';
-      chip.style.fontWeight = '600';
-      chip.style.fontSize = '12.5px';
-      chip.style.fontFamily = 'sans-serif';
-      chip.style.textAlign = 'center';
-      chip.style.touchAction = 'none';
-      chip.textContent = name;
-
-      const chips = Array.from(friendList.querySelectorAll('.chip'));
-      const myIdx = friends.indexOf(name);
-      let inserted = false;
-      for (const c of chips){
-        const idx = friends.indexOf(c.dataset.name);
-        if (idx > myIdx){
-          friendList.insertBefore(chip, c);
-          inserted = true;
-          break;
-        }
-      }
-      if (!inserted) friendList.appendChild(chip);
-    }
-    window.addChipBack = addChipBack;
-
-    function onMove(e){
-      if (!draggingChip) return;
-      draggingChip.style.left = (e.clientX - offsetX) + 'px';
-      draggingChip.style.top = (e.clientY - offsetY) + 'px';
-      e.preventDefault();
-    }
-
-    function onUp(e){
-      if (!draggingChip) return;
-
-      const c = canvas.getBoundingClientRect();
-      const inCanvas = (e.clientX >= c.left && e.clientX <= c.right && e.clientY >= c.top && e.clientY <= c.bottom);
-
-      if (inCanvas){
-        placeTokenFromChip(draggingChip, e.clientX, e.clientY);
-        draggingChip.remove();
-        didDrop = true;
-      }
-
-      cleanup();
-      e.preventDefault();
-    }
-
-    function onCancel(){
-      cleanup();
-    }
-
-    friendList.addEventListener('pointerdown', (e) => {
-      if (READONLY) return;
-      const chip = e.target.closest('.chip');
-      if (!chip) return;
-
-      draggingChip = chip;
-      didDrop = false;
-      activePointerId = e.pointerId;
-
-      const r = chip.getBoundingClientRect();
-      offsetX = e.clientX - r.left;
-      offsetY = e.clientY - r.top;
-
-      originParent = chip.parentElement;
-      placeholder = document.createElement('div');
-      placeholder.style.width = r.width + 'px';
-      placeholder.style.height = r.height + 'px';
-      placeholder.style.boxSizing = 'border-box';
-      placeholder.style.borderRadius = '10px';
-      placeholder.style.border = '1px dashed #e5e7eb';
-      placeholder.style.background = '#ffffff';
-      originParent.insertBefore(placeholder, chip);
-
-      chip.style.position = 'fixed';
-      chip.style.left = (e.clientX - offsetX) + 'px';
-      chip.style.top = (e.clientY - offsetY) + 'px';
-      chip.style.zIndex = '9999';
-      chip.style.width = r.width + 'px';
-      chip.style.height = r.height + 'px';
-      chip.style.cursor = 'grabbing';
-      chip.style.opacity = '0.98';
-      chip.style.transform = 'translateZ(0)';
-      document.body.appendChild(chip);
-
-      try { chip.setPointerCapture(e.pointerId); } catch (err) {}
-
-      window.addEventListener('pointermove', onMove, { passive: false });
-      window.addEventListener('pointerup', onUp, { passive: false });
-      window.addEventListener('pointercancel', onCancel);
-
-      e.preventDefault();
-    });
-  }
-
-  window.addEventListener('load', () => {
-    enableChipDragToCanvas();
-    setTimeout(restoreInitial, 0);
-
-    // readonly 상태에서는 기본적으로 마무리 단계가 아닌 "학생 목록" 상태로 시작
-    setActiveRank(null);
-    syncHidden();
-  });
 </script>
-
-<script>
-  // 교사 배치 시작 시각 저장 (complete 페이지에서 duration 계산)
-  (function(){
-    const key = "teacher_run_start_{{ run.id }}";
-    if (!sessionStorage.getItem(key)){
-      sessionStorage.setItem(key, String(Date.now()));
-    }
-  })();
-</script>
-
 {% endblock %}

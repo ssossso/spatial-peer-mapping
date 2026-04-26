@@ -2,438 +2,337 @@
 {% block content %}
 
 <style>
-  .card-wide{ max-width:980px; text-align:left; }
+  .card-wide { max-width: 980px; text-align: left; }
+  .top-title { text-align: center; margin: 0 0 6px 0; }
+  .top-sub { text-align: center; color: #6b7280; font-weight: 700; margin: 0 0 16px 0; }
 
-  .pill{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    gap:8px;
-    padding:10px 14px;
-    border-radius:999px;
-    border:1px solid #d1d5db;
-    background:#fff;
-    color:#111827;
-    font-weight:900;
-    font-size:14px;
-    cursor:pointer;
-    text-decoration:none;
-    user-select:none;
-  }
-  .pill:hover{ border-color:#9ca3af; }
-  .dl-pill svg { flex: 0 0 auto; }
-
-  .round-row{ display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin:10px 0 4px 0; }
-
-  .round-pill{
-    width:140px;
-    height:140px;
-    border-radius:20px;
-    border:1.5px solid #d1d5db;
-    background:#fff;
-    padding:14px 14px;
-    display:flex;
-    flex-direction:column;
-    align-items:flex-start;
-    justify-content:flex-start;
-    gap:6px;
-    position:relative;
+  .round-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
   }
 
-  .round-pill:hover{ border-color:#9ca3af; }
-
-  .round-pill.active{
-    background:#4a6cf7;
-    color:#fff;
-    border-color:#4a6cf7;
-  }
-  .round-pill.active .round-title,
-  .round-pill.active .round-sub{
-    color:#fff;
-  }
-
-  .round-title{
-    font-size:21px;
-    font-weight:950;
-    line-height:1.05;
-    text-align:left;
-  }
-  .round-sub{
-    font-size:21px;
-    font-weight:300;
-    color:#6b7280;
-    line-height:1.05;
-    text-align:left;
-  }
-    .round-result-btn{
-    position:absolute;
-    right:14px;
-    bottom:14px;
-    width:54px;
-    height:54px;
-    border-radius:14px;
-    background:#ffffff;
-    border:1.5px solid rgba(255,255,255,0.85);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    text-align:center;
-    font-weight:950;
-    font-size:14px;
-    line-height:1.05;
-    color:#4a6cf7;
-    letter-spacing:-0.4px;
-    user-select:none;
+  .round-card {
+    min-height: 116px;
+    border-radius: 12px;
+    border: 1.5px solid #d1d5db;
+    background: #fff;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    cursor: pointer;
+    box-sizing: border-box;
   }
 
-  .round-pill.active .round-result-btn{
-    border-color:rgba(255,255,255,0.9);
-    background:#ffffff;
-    color:#4a6cf7;
+  .round-card.active {
+    background: #4a6cf7;
+    color: #fff;
+    border-color: #4a6cf7;
   }
 
+  .round-main { font-size: 22px; font-weight: 950; line-height: 1.1; }
+  .round-sub { font-size: 14px; font-weight: 800; color: #6b7280; margin-top: 4px; }
+  .round-card.active .round-sub { color: #e8edff; }
 
-  .panel{ margin-top:12px; border:1px solid #e5e7eb; border-radius:14px; background:#fff; overflow:hidden; }
-  .panel-hd{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; background:#f8fafc; border-bottom:1px solid #eef2f7; }
-  .panel-title{ font-weight:950; }
-  .panel-sub{ color:#6b7280; font-weight:700; font-size:12px; }
-  .panel-bd{ padding:14px 16px; }
-
-  .step-row{ display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 12px 0; align-items:center; }
-  .step-btn{ border:1px solid #d1d5db; background:#fff; }
-  .step-btn.active{ border-color:#111827; }
-
-  .step-arrow{
-    color:#9ca3af;
-    font-weight:900;
-    font-size:18px;
-    user-select:none;
-    margin:0 2px;
-    line-height:1;
+  .round-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 12px;
   }
 
-  .content-box{ display:none; border:1px solid #e5e7eb; border-radius:14px; background:#fff; padding:14px; margin-top:10px; }
-  .content-box.active{ display:block; }
-
-  .section-title{ font-weight:950; margin:0 0 8px 0; }
-  .subtitle{ color:#6b7280; font-weight:700; font-size:13px; line-height:1.4; }
-  .guide-box .subtitle{font-weight: 400;}
-  .note{ margin-top:10px; padding:10px 12px; background:#f8fafc; border:1px solid #eef2f7; border-radius:12px; font-weight:800; font-size:13px; color:#374151; }
-
-  .two-col{ display:grid; grid-template-columns: 1fr 2fr; gap:12px; }
-  @media(max-width: 600px){ .two-col{ grid-template-columns: 1fr; } }
-
-  .qr-box{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:12px; text-align:center; }
-  .qr-actions{ display:flex; gap:8px; justify-content:center; align-items:center; margin-top:8px; }
-  .icon-btn{ width:30px; height:30px; border-radius:10px; border:1px solid #e5e7eb; background:#fff; cursor:pointer; font-size:16px; line-height:1; display:inline-flex; align-items:center; justify-content:center; }
-  .icon-btn:hover{ border-color:#9ca3af; }
-
-  .student-list{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:12px; }
-  .student-item{ display:flex; justify-content:space-between; align-items:center; padding:10px 8px; border-bottom:1px solid #f1f5f9; }
-  .student-item:last-child{ border-bottom:none; }
-  .student-name{ font-weight:900; }
-  .no{ display:inline-block; width:28px; text-align:right; margin-right:8px; color:#6b7280; font-weight:900; }
-  .student-actions{ display:flex; gap:10px; align-items:center; }
-  .goto-btn{ text-decoration:none; font-weight:900; border:1px solid #d1d5db; padding:6px 10px; border-radius:10px; color:#111827; background:#fff; }
-  .goto-btn:hover{ border-color:#9ca3af; }
-  .status{ font-weight:950; font-size:13px; padding:4px 10px; border-radius:999px; border:1px solid #e5e7eb; }
-  .status.done{ background:#ecfdf5; border-color:#a7f3d0; color:#065f46; }
-  .status.todo{ background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
-
-  .btn-row{ display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
-  .action-btn{
-    border:1px solid #d1d5db;
-    background:#fff;
-    color:#111827;
-  }
-  .action-btn:hover{ border-color:#9ca3af; }
-  .action-btn.primary{ background:#4a6cf7; color:#fff; border-color:#4a6cf7; }
-  .action-btn.primary:hover{ background:#3955c6; border-color:#3955c6; }
-
-  /* 클릭은 되지만 비활성처럼 보이게 (모달용) */
-  .action-btn.is-disabled{
-    opacity:0.45;
-    cursor:not-allowed;
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #111827;
+    font-weight: 900;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    box-sizing: border-box;
   }
 
-  .action-btn.active{
-    border-color:#111827;
+  .pill.primary {
+    background: #4a6cf7;
+    border-color: #4a6cf7;
+    color: #fff;
+  }
+
+  .pill.danger { border-color: #fecaca; color: #991b1b; }
+  .pill:disabled,
+  .pill.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .panel {
+    margin-top: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .panel-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    background: #f8fafc;
+    border-bottom: 1px solid #eef2f7;
+  }
+
+  .panel-title { font-weight: 950; }
+  .panel-sub { color: #6b7280; font-weight: 700; font-size: 12px; }
+  .panel-bd { padding: 14px 16px; }
+
+  .step-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .step-tab.active {
+    border-color: #111827;
     box-shadow: 0 0 0 1px #111827 inset;
   }
-  .action-btn.primary.active{
-    box-shadow: 0 0 0 1px rgba(17,24,39,0.25) inset;
+
+  .content-box {
+    display: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
   }
 
-  .mini-card{ border:1px solid #e5e7eb; border-radius:14px; background:#fff; padding:12px; margin-top:10px; }
-  .field-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px; }
-  .reason-input{ flex:1; min-width:220px; }
-  .small{ font-size:12px; color:#6b7280; font-weight:700; }
+  .content-box.active { display: block; }
+  .section-title { font-weight: 950; margin: 0 0 8px 0; }
+  .note {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #eef2f7;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 13px;
+    color: #374151;
+    line-height: 1.5;
+  }
 
-  button.pill, button.icon-btn, button.action-btn{ padding:10px 14px; border-radius:999px; font-size:14px; font-weight:900; }
-  button.icon-btn{ padding:0; border-radius:10px; }
-  button.action-btn{ border-radius:12px; padding:10px 14px; }
+  .two-col {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 12px;
+  }
 
-  .card.card-wide{ max-width:980px; }
+  .qr-box,
+  .student-list,
+  .mini-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    padding: 12px;
+  }
 
-  .dl-row{
-    margin-top:12px;
-    padding-top:12px;
-    border-top:1px solid #eef2f7;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    flex-wrap:wrap;
+  .student-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 4px;
+    border-bottom: 1px solid #f1f5f9;
   }
-  .dl-hint{
-    font-size:12px;
-    color:#6b7280;
-    font-weight:800;
-    line-height:1.35;
-  }
-  .dl-pill{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-    padding:10px 14px;
-    border-radius:12px;
-    border:1px solid #d1d5db;
-    background:#fff;
-    color:#111827;
-    font-weight:900;
-    text-decoration:none;
-    white-space:nowrap;
-  }
-  .dl-pill:hover{ border-color:#9ca3af; }
-  .dl-pill svg{ width:18px; height:18px; flex:0 0 auto; }
+  .student-item:last-child { border-bottom: none; }
+  .student-name { font-weight: 900; }
+  .no { display: inline-block; width: 28px; text-align: right; margin-right: 8px; color: #6b7280; font-weight: 900; }
 
-  /* ------------------------------
-     Minimal modal (1-line message)
-  ------------------------------ */
-  .modal-backdrop{
-    position:fixed;
-    inset:0;
-    background:rgba(17,24,39,0.45);
-    display:none;
-    align-items:center;
-    justify-content:center;
-    z-index:2000;
-    padding:16px;
+  .status {
+    font-weight: 950;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    white-space: nowrap;
   }
-  .modal-backdrop.show{ display:flex; }
+  .status.done { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+  .status.todo { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
 
-  .modal{
-    width:min(420px, 100%);
-    background:#fff;
-    border-radius:16px;
-    border:1px solid #e5e7eb;
-    box-shadow:0 10px 30px rgba(0,0,0,0.18);
-    overflow:hidden;
-    text-align:left;
+  .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
+  .field-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .reason-input { flex: 1; min-width: 220px; }
+  .small { font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5; }
+  .radio-group label { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; margin: 4px 12px 4px 0; }
+  .radio-group input { width: auto; }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17,24,39,0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 16px;
   }
-  .modal-hd{
-    padding:12px 14px;
-    background:#f8fafc;
-    border-bottom:none;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    width: min(420px, 100%);
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    overflow: hidden;
   }
-  .modal-title{ font-weight:950; }
-  .modal-close{
-    width:34px; height:34px;
-    border-radius:10px;
-    border:1px solid #e5e7eb;
-    background:#fff;
-    cursor:pointer;
-    font-weight:900;
-  }
-  .modal-bd{ padding:14px; }
-  .modal-actions{
-    padding:12px 14px;
-    border-top:1px solid #eef2f7;
-    display:flex;
-    justify-content:flex-end;
-    gap:10px;
-    flex-wrap:wrap;
+  .modal-hd { padding: 12px 14px; background: #f8fafc; font-weight: 950; }
+  .modal-bd { padding: 14px; }
+  .modal-actions { padding: 12px 14px; border-top: 1px solid #eef2f7; display: flex; justify-content: flex-end; }
+
+  @media(max-width: 760px) {
+    .round-row { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    .two-col { grid-template-columns: 1fr; }
+    .panel-hd { align-items: flex-start; flex-direction: column; }
   }
 </style>
 
 <div class="card card-wide">
-  <h2 style="margin:0 0 6px 0; text-align:center;">{{ cls.name }}</h2>
-  <p style="margin:0 0 14px 0; text-align:center;">학급 코드: <b>{{ code }}</b></p>
+  <h2 class="top-title">{{ cls.name }}</h2>
+  <p class="top-sub">학급 코드: <b>{{ code }}</b></p>
 
-  <div style="font-weight:900; text-align:center; margin:0 0 8px 0;">측정 회차 선택</div>
+  <div style="font-weight:900; text-align:center;">측정 회차 선택</div>
 
   {% set rounds = [("1","3월 말"), ("2","4월 말"), ("3","5월 말"), ("4","6월 말")] %}
   <div class="round-row">
     {% for n, when in rounds %}
       <div
-        class="round-pill {% if open_panel and (sid|string)==(n|string) %}active{% endif %}"
+        class="round-card {% if open_panel and (sid|string)==(n|string) %}active{% endif %}"
         data-open-href="/teacher/class/{{ code }}/v2?sid={{ n }}&open=1"
         role="button"
         tabindex="0"
         title="{{ n }}차 조사 열기"
       >
-        <div class="round-title">{{ n }}회차</div>
-        <div class="round-sub">{{ when }}</div>
-
+        <div>
+          <div class="round-main">{{ n }}회차</div>
+          <div class="round-sub">{{ when }}</div>
+        </div>
         <a
-          class="round-result-btn"
+          class="pill"
           href="/teacher/class/{{ code }}/analysis?sid={{ n }}"
           target="_blank"
           rel="noopener noreferrer"
-          title="{{ n }}차 결과 보기"
           onclick="event.stopPropagation();"
-        >결과<br>보기</a>
+        >결과 보기</a>
       </div>
     {% endfor %}
   </div>
-
 
   {% if open_panel %}
   <div class="panel" id="roundPanel">
     <div class="panel-hd">
       <div>
-        <div class="panel-title">{{ sid }}차 조사</div>
+        <div class="panel-title">{{ sid }}회차 조사</div>
+        <div class="panel-sub">선택 회차: {{ sid }}회차</div>
       </div>
-      <div class="panel-sub">선택 회차: <b>{{ sid }}회차</b></div>
+      <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" target="_blank" rel="noopener noreferrer">분석 화면</a>
     </div>
 
     <div class="panel-bd">
-      <div class="step-row" role="tablist" aria-label="조사 단계">
-        <button type="button" class="pill step-btn active" data-step="guide" aria-selected="true">조사 안내</button>
-        <span class="step-arrow" aria-hidden="true">→</span>
-        <button type="button" class="pill step-btn" data-step="teacher_map" aria-selected="false">교사 관계 인식 배치</button>
-        <span class="step-arrow" aria-hidden="true">→</span>
-        <button type="button" class="pill step-btn" data-step="student_map" aria-selected="false">학생 인식 배치</button>
-        <span class="step-arrow" aria-hidden="true">→</span>
-        <button type="button" class="pill step-btn" data-step="finalize" aria-selected="false">회차 마무리</button>
+      <div class="step-tabs" role="tablist" aria-label="조사 단계">
+        <button type="button" class="pill step-tab active" data-step="guide" aria-selected="true">조사 안내</button>
+        <button type="button" class="pill step-tab" data-step="teacher_map" aria-selected="false">교사 배치</button>
+        <button type="button" class="pill step-tab" data-step="student_map" aria-selected="false">학생 배치</button>
+        <button type="button" class="pill step-tab" data-step="finalize" aria-selected="false">회차 마무리</button>
       </div>
 
-      {# --------------- 조사 안내 --------------- #}
       <div class="content-box active" data-step-box="guide">
-        <div class="section-title">다음과 같이 학생들에게 안내해주세요.</div>
+        <div class="section-title">학생에게 안내할 내용</div>
         <div class="subtitle">
-          지금부터 하는 활동은 우리 반 친구들에 대해 여러분이 느끼는 <b>관계의 느낌과 거리감</b>을 자유롭게 표현하는 활동입니다.<br>
-          정답이나 틀린 답은 없으며, 잘 보이게 하거나 숨겨야 할 답도 없습니다.<br>
-          지금 시점에서 떠오르는 느낌을 기준으로, 부담 없이 우리 반 친구들을 배치해 주세요.
+          지금부터 우리 반 친구들과의 관계를 자유롭게 배치해 보는 활동을 합니다.
+          정답이나 오답은 없고, 다른 학생에게 결과가 공개되지 않습니다.
+          지금 떠오르는 친밀감과 거리감을 기준으로 편하게 배치해 주세요.
         </div>
-
         <div class="note">
-          ※ 장난식으로 응답하지 않기<br>
-          ※ 입력 결과는 다른 학생들에게 <b>절대 공개되지 않으니</b> 솔직하게 작성해도 괜찮아요.
+          장난으로 응답하지 않기, 다른 학생의 화면을 보지 않기, 솔직하게 작성하기를 안내해 주세요.
         </div>
       </div>
 
-      {# --------------- 교사 관계 인식 배치 --------------- #}
       <div class="content-box" data-step-box="teacher_map">
         <div class="section-title">교사 관계 인식 배치</div>
-        <div class="subtitle" style="margin-bottom:10px;">
-          교사 관계 인식 배치는 <b>해당 회차의 학생 인식 배치보다 먼저 진행</b>해 주세요.<br><br>
-          정답을 찾거나 학생을 판단·진단하기 위한 것이 아닙니다.<br>
-          교사의 관찰을 정리해 보고, 학급 관계를 다른 각도에서 바라보기 위한 <b>참고 자료</b>입니다.<br><br>
-          맞고 틀린 게 없으니 부담 없이 떠오르는 대로 학생들을 배치해 주세요.
+        <div class="subtitle">
+          학생 조사 결과를 보기 전에, 교사가 인식하고 있는 학급 관계를 먼저 배치합니다.
+          이 자료는 정답을 찾기 위한 것이 아니라 교사의 관찰을 정리하고 학생 인식과 비교하기 위한 참고 자료입니다.
         </div>
 
-{% set has_teacher_run = (teacher_run is defined and teacher_run) %}
-
-{% if has_teacher_run %}
-  <div style="font-weight:900; color:#111827; margin:0 0 10px 0;">
-    완료되었습니다.
-  </div>
-{% endif %}
+        {% set has_teacher_run = (teacher_run is defined and teacher_run) %}
+        {% if has_teacher_run %}
+          <div class="note">교사 배치가 저장되어 있습니다.</div>
+        {% endif %}
 
         <div class="btn-row">
           {% if has_teacher_run %}
-            <a
-              class="pill action-btn primary"
-              href="/teacher/placement/{{ teacher_run.id }}?edit=1"
-              target="_blank"
-              rel="noopener noreferrer"
-              style="text-decoration:none;"
-            >수정</a>
+            <a class="pill primary" href="/teacher/placement/{{ teacher_run.id }}?edit=1" target="_blank" rel="noopener noreferrer">수정</a>
           {% else %}
-            <a
-              class="pill action-btn primary"
-              href="/teacher/class/{{ code }}/placement/start?sid={{ sid }}"
-              target="_blank"
-              rel="noopener noreferrer"
-              style="text-decoration:none;"
-            >시작</a>
+            <a class="pill primary" href="/teacher/class/{{ code }}/placement/start?sid={{ sid }}" target="_blank" rel="noopener noreferrer">시작</a>
           {% endif %}
         </div>
       </div>
 
-      {# --------------- 학생 인식 배치 --------------- #}
       <div class="content-box" data-step-box="student_map">
-        <div class="section-title">학생 인식 배치</div>
+        <div class="section-title">학생 관계 인식 배치</div>
         <div class="subtitle" style="margin-bottom:10px;">
-          QR을 학생들에게 보여주고, 학생 로그인 PIN을 인쇄하여 배부해주세요. 학생 조사는 태블릿 환경을 권장합니다.
+          QR 코드를 학생에게 보여주거나 개인 PIN 안내지를 배부해 주세요. 태블릿 또는 컴퓨터 환경을 권장합니다.
         </div>
 
         <div class="two-col">
           {% set qr_src = '/qr/' ~ code ~ '/' ~ sid ~ '.png' %}
 
-          <div class="qr-box">
-            <div style="font-weight:950; margin-bottom:6px;">{{ sid }}차 QR</div>
+          <div class="qr-box" style="text-align:center;">
+            <div style="font-weight:950; margin-bottom:6px;">{{ sid }}회차 QR</div>
             <img
               src="{{ qr_src }}"
-              alt="{{ sid }}차 QR"
-              style="width:140px; height:140px; border-radius:10px; border:1px solid #eef2f7; display:block; margin:0 auto;"
+              alt="{{ sid }}회차 QR"
+              style="width:150px; height:150px; border-radius:10px; border:1px solid #eef2f7; display:block; margin:0 auto;"
               loading="lazy"
             />
-            <div class="qr-actions">
-              <button type="button" class="icon-btn" title="크게 보기" onclick="openQrNewWindowOnly('{{ qr_src }}')">🔎</button>
-              <button type="button" class="icon-btn" title="다운로드" onclick="downloadQrPng('{{ qr_src }}', '{{ sid }}차')">📂</button>
+            <div class="btn-row" style="justify-content:center;">
+              <button type="button" class="pill" onclick="openQrNewWindowOnly('{{ qr_src }}')">크게 보기</button>
+              <button type="button" class="pill" onclick="downloadQrPng('{{ qr_src }}', '{{ sid }}회차')">다운로드</button>
             </div>
 
-            <br>
-
             <a
-              class="pill action-btn"
+              class="pill"
               href="/teacher/class/{{ code }}/student_pin_pdf?sid={{ sid }}"
-              style="text-decoration:none; display:inline-flex; align-items:center; gap:8px;"
+              style="margin-top:8px;"
               title="학생 로그인 PIN PDF 다운로드"
-            >
-              <span>학생_로그인_PIN.pdf</span>
-              <svg
-                stroke="currentColor"
-                fill="currentColor"
-                stroke-width="0"
-                viewBox="0 0 512 512"
-                xmlns="http://www.w3.org/2000/svg"
-                style="width:18px; height:18px; display:block;"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <path d="M416 199.5h-91.4V64H187.4v135.5H96l160 158.1 160-158.1zM96 402.8V448h320v-45.2H96z"></path>
-              </svg>
-            </a>
+            >학생 PIN PDF</a>
           </div>
 
           <div class="student-list">
             <div style="font-weight:950; margin-bottom:8px;">학생 참여 현황</div>
-            <div class="small" style="margin-bottom:10px;">화살표(↗)를 누르면 해당 학생 결과 화면으로 이동합니다.</div>
+            <div class="small" style="margin-bottom:10px;">이름 옆의 보기 버튼을 누르면 해당 학생의 결과 화면으로 이동합니다.</div>
 
             {% for r in rows %}
               <div class="student-item">
                 <div class="student-name"><span class="no">{{ r.no }}</span> {{ r.name }}</div>
-                <div class="student-actions">
-                  <span class="status {% if r.status=='완료' %}done{% else %}todo{% endif %}">{{ r.status }}</span>
-                  <a class="goto-btn" href="/teacher/class/{{ code }}/result/{{ sid }}/{{ r.url_name }}" title="학생 결과 보기">↗</a>
+                <div class="btn-row" style="margin:0;">
+                  <span class="status {% if r.status == '완료' %}done{% else %}todo{% endif %}">{{ r.status }}</span>
+                  <a class="pill" href="/teacher/class/{{ code }}/result/{{ sid }}/{{ r.url_name }}" title="학생 결과 보기">보기</a>
                 </div>
               </div>
             {% endfor %}
-
-
           </div>
         </div>
       </div>
 
-      {# --------------- 회차 마무리 --------------- #}
       <div class="content-box" data-step-box="finalize">
         <div class="section-title">회차 마무리</div>
 
@@ -441,58 +340,48 @@
         {% set incomplete_names = incomplete | map(attribute='name') | list %}
 
         <div class="btn-row">
-          <button type="button" class="action-btn" id="btnExclude">참여 제외 학생</button>
-
-          <button
-            type="button"
-            class="action-btn primary is-disabled"
-            id="btnFinalize"
-            aria-disabled="true"
-          >결과</button>
+          <button type="button" class="pill" id="btnExclude">참여 제외 학생 확인</button>
+          <button type="button" class="pill primary is-disabled" id="btnFinalize" aria-disabled="true">결과 저장</button>
         </div>
 
-
-        <div class="mini-card" id="boxExclude" style="display:none;">
+        <div class="mini-card" id="boxExclude" style="display:none; margin-top:10px;">
           <div style="font-weight:950;">참여 제외 학생</div>
 
           {% if incomplete_names|length == 0 %}
-            <div class="small" style="margin-top:6px;">미완료 학생이 없습니다. 다음 단계로 진행해 주세요.</div>
+            <div class="small" style="margin-top:6px;">미완료 학생이 없습니다. 확인 후 다음 단계로 진행해 주세요.</div>
             <div class="btn-row">
-              <button type="button" class="action-btn" onclick="markExclusionResolved();">확인</button>
+              <button type="button" class="pill primary" onclick="markExclusionResolved();">확인</button>
             </div>
           {% else %}
-            <div class="note" style="margin-top:10px;">
-              <b>{{ incomplete_names|join(', ') }}</b> 학생이 미완료하였습니다. 참여 제외하시겠습니까?
+            <div class="note">
+              <b>{{ incomplete_names|join(', ') }}</b> 학생이 미완료 상태입니다. 참여 제외 처리하거나 학생 참여를 기다릴 수 있습니다.
             </div>
 
             <div class="btn-row">
-              <button type="button" class="action-btn" id="btnExcludeYes">예 (사유 입력)</button>
-              <button type="button" class="action-btn" id="btnExcludeNo">아니요 (학생 참여 예정)</button>
+              <button type="button" class="pill" id="btnExcludeYes">제외 사유 입력</button>
+              <button type="button" class="pill" id="btnExcludeNo">학생 참여 예정</button>
             </div>
 
             <div id="excludeReasons" style="display:none; margin-top:10px;">
-              <div class="small">미완료 사유 예시: 결석, 특수학생으로 본인 참여 어려움 등</div>
+              <div class="small">사유 예시: 결석, 전입/전출, 특수한 사정으로 본인 참여 어려움</div>
               {% for nm in incomplete_names %}
                 <div class="field-row">
                   <div style="font-weight:900; min-width:120px;">{{ nm }}</div>
                   <input class="reason-input" type="text" placeholder="사유 입력" data-reason-for="{{ nm|e }}" />
                 </div>
               {% endfor %}
-            
-              <div class="btn-row" style="justify-content:flex-start; margin-top:10px;">
-                <button type="button" class="action-btn" id="btnExcludeSaveReasons">참여 제외 사유 저장</button>
+
+              <div class="btn-row">
+                <button type="button" class="pill primary" id="btnExcludeSaveReasons">제외 사유 저장</button>
               </div>
             </div>
           {% endif %}
         </div>
-        <div class="mini-card" id="boxFinalize" style="display:none;">
+
+        <div class="mini-card" id="boxFinalize" style="display:none; margin-top:10px;">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-            <div style="font-weight:950;">결과</div>
-            <span
-              id="badgeSurvey"
-              class="status todo"
-              style="border-radius:999px; padding:4px 10px;"
-            >설문 미완료(권장)</span>
+            <div style="font-weight:950;">교사 설문 및 결과 저장</div>
+            <span id="badgeSurvey" class="status todo">설문 미완료</span>
           </div>
 
           <div class="small" style="margin-top:6px;" id="finalizeTopHint">
@@ -500,175 +389,89 @@
           </div>
 
           <div class="mini-card" style="margin-top:12px;">
-            <div style="font-weight:950;">교사 설문</div>
-            <div class="small" style="margin-top:6px;">
-              연구 목적 설문입니당. 귀찮게 해서 미안해용ㅜㅠㅠ 너무 고마워,,,
+            <div class="radio-group">
+              <div style="font-weight:900; margin:0 0 6px 0;">1. 이번 회차의 관계 지도 결과는 학급 내 교우관계를 이해하는 데 도움이 되었습니까?</div>
+              {% for i in [1,2,3,4,5] %}
+                <label><input type="radio" name="q1_help" value="{{ i }}"> {{ i }}</label>
+              {% endfor %}
+              <span class="small">(1=전혀 아님, 5=매우 그럼)</span>
+            </div>
+
+            <div class="radio-group" style="margin-top:12px;">
+              <div style="font-weight:900; margin:0 0 6px 0;">2. 기존에 인식하지 못했던 관계나 집단 구조가 있었습니까?</div>
+              <label><input type="radio" name="q2_new" value="yes"> 있었다</label>
+              <label><input type="radio" name="q2_new" value="no"> 없었다</label>
+              <textarea id="q2_detail" rows="3" placeholder="선택: 새롭게 인식한 관계나 구조를 적어 주세요." style="margin-top:8px;"></textarea>
+            </div>
+
+            <div class="radio-group" style="margin-top:12px;">
+              <div style="font-weight:900; margin:0 0 6px 0;">3. 학생 상담/생활지도 판단 시 참고 자료로 활용할 수 있다고 느끼십니까?</div>
+              {% for i in [1,2,3,4,5] %}
+                <label><input type="radio" name="q3_use" value="{{ i }}"> {{ i }}</label>
+              {% endfor %}
+              <span class="small">(1=전혀 아님, 5=매우 그럼)</span>
+            </div>
+
+            <div class="radio-group" style="margin-top:12px;">
+              <div style="font-weight:900; margin:0 0 6px 0;">4. 평소 관계 인식과 비교했을 때 어떤 편이었습니까?</div>
+              <label><input type="radio" name="q4_cmp" value="similar"> 대부분 유사했다</label>
+              <label><input type="radio" name="q4_cmp" value="some"> 일부 차이가 있었다</label>
+              <label><input type="radio" name="q4_cmp" value="many"> 상당한 차이가 있었다</label>
+              <textarea id="q4_detail" rows="3" placeholder="선택: 차이가 있었다면 이유나 인상을 적어 주세요." style="margin-top:8px;"></textarea>
+            </div>
+
+            <div class="radio-group" style="margin-top:12px;">
+              <div style="font-weight:900; margin:0 0 6px 0;">5. 이 도구를 사용하면서 관계 판단에 대한 확신도는 어떻게 느껴졌습니까?</div>
+              <label><input type="radio" name="q5_conf" value="confused"> 오히려 더 어려워졌다</label>
+              <label><input type="radio" name="q5_conf" value="same"> 큰 변화는 없었다</label>
+              <label><input type="radio" name="q5_conf" value="little"> 조금 더 확신이 생겼다</label>
+              <label><input type="radio" name="q5_conf" value="much"> 훨씬 명확해졌다</label>
+            </div>
+
+            <div class="radio-group" style="margin-top:12px;">
+              <div style="font-weight:900; margin:0 0 6px 0;">6. 다음 회차에서도 이 도구를 활용할 의향이 있으십니까?</div>
+              <label><input type="radio" name="q6_next" value="yes"> 있다</label>
+              <label><input type="radio" name="q6_next" value="no"> 없다</label>
+              <label><input type="radio" name="q6_next" value="maybe"> 상황에 따라 다르다</label>
             </div>
 
             <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">1) 이번 회차의 관계 지도 결과는 학급 내 교우관계를 이해하는 데 도움이 되었습니까?</div>
-              <div class="field-row">
-                {% for i in [1,2,3,4,5] %}
-                  <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                    <input type="radio" name="q1_help" value="{{ i }}" style="width:auto;" /> {{ i }}
-                  </label>
-                {% endfor %}
-                <span class="small">(1=전혀 아니다, 5=매우 그렇다)</span>
-              </div>
-            </div>
-
-            <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">2) 이번 결과를 통해 기존에 인식하지 못했던 관계나 집단 구조가 있었습니까?</div>
-              <div class="field-row">
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q2_new" value="yes" style="width:auto;" /> 있었다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q2_new" value="no" style="width:auto;" /> 없었다
-                </label>
-              </div>
-              <textarea id="q2_detail" rows="3" placeholder="(선택) 새롭게 인식한 관계/구조가 있다면 간단히 적어 주세요." style="margin-top:8px;"></textarea>
-            </div>
-
-            <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">3) 이번 결과는 학생 상담/생활지도 판단 시 참고 자료로 활용할 수 있다고 느끼십니까?</div>
-              <div class="field-row">
-                {% for i in [1,2,3,4,5] %}
-                  <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                    <input type="radio" name="q3_use" value="{{ i }}" style="width:auto;" /> {{ i }}
-                  </label>
-                {% endfor %}
-                <span class="small">(1=전혀 아니다, 5=매우 그렇다)</span>
-              </div>
-            </div>
-
-            <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">4) 이번 결과는 교사가 평소 가지고 있던 관계 인식과 비교했을 때 어떤 편이었습니까?</div>
-              <div class="field-row">
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q4_cmp" value="similar" style="width:auto;" /> 대부분 유사했다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q4_cmp" value="some" style="width:auto;" /> 일부 차이가 있었다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q4_cmp" value="many" style="width:auto;" /> 상당한 차이가 있었다
-                </label>
-              </div>
-              <textarea id="q4_detail" rows="3" placeholder="(선택) 차이가 있었다면 이유나 인상 깊었던 점을 적어 주세요." style="margin-top:8px;"></textarea>
-            </div>
-
-            <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">5) 이 도구를 사용하면서 관계 판단에 대한 확신도는 어떻게 느껴졌습니까?</div>
-              <div class="field-row">
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q5_conf" value="confused" style="width:auto;" /> 오히려 혼란스러웠다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q5_conf" value="same" style="width:auto;" /> 큰 변화는 없었다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q5_conf" value="little" style="width:auto;" /> 조금 더 확신이 생겼다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q5_conf" value="much" style="width:auto;" /> 확실히 도움이 되었다
-                </label>
-              </div>
-            </div>
-
-            <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">6) (선택) 다음 회차에서도 이 도구를 활용할 의향이 있으십니까?</div>
-              <div class="field-row">
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q6_next" value="yes" style="width:auto;" /> 있다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q6_next" value="no" style="width:auto;" /> 없다
-                </label>
-                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:800;">
-                  <input type="radio" name="q6_next" value="maybe" style="width:auto;" /> 상황에 따라 다르다
-                </label>
-              </div>
-            </div>
-
-            <div style="margin-top:12px;">
-              <div style="font-weight:900; margin:0 0 6px 0;">7) (선택) 불편했던 점/개선되었으면 하는 점이 있다면 적어 주세요.</div>
+              <div style="font-weight:900; margin:0 0 6px 0;">7. 불편했던 점이나 개선 의견이 있다면 적어 주세요.</div>
               <textarea id="q7_feedback" rows="3" placeholder="자유롭게 작성" style="margin-top:8px;"></textarea>
             </div>
 
             <div class="btn-row">
-              <button type="button" class="action-btn primary" id="btnSurveySubmit">설문 제출</button>
-              <span class="small" id="surveyHint">설문 제출 후 ‘결과 저장’ 버튼이 활성화됩니다.</span>
+              <button type="button" class="pill primary" id="btnSurveySubmit">설문 제출</button>
+              <span class="small" id="surveyHint">설문 제출 후 결과 저장 버튼이 활성화됩니다.</span>
             </div>
           </div>
 
           <div class="btn-row" style="margin-top:12px;">
-            <button
-              type="button"
-              class="action-btn primary is-disabled"
-              id="btnResultSave"
-              aria-disabled="true"
-            >이번 회차 결과 저장</button>
-
-            <a
-              class="pill action-btn"
-              id="resultLink"
-              href="/teacher/class/{{ code }}/analysis?sid={{ sid }}"
-              target="_blank"
-              rel="noopener noreferrer"
-              style="text-decoration:none;"
-            >결과 보기</a>
+            <button type="button" class="pill primary is-disabled" id="btnResultSave" aria-disabled="true">이번 회차 결과 저장</button>
+            <a class="pill" id="resultLink" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" target="_blank" rel="noopener noreferrer">결과 보기</a>
           </div>
 
-          <div class="small" id="finalizeSavedMsg" style="margin-top:8px; display:none;">
-            저장되었습니다.
-          </div>
+          <div class="small" id="finalizeSavedMsg" style="margin-top:8px; display:none;">저장되었습니다.</div>
         </div>
-
-
       </div>
     </div>
   </div>
   {% endif %}
 </div>
 
-<!-- Minimal modal -->
 <div class="modal-backdrop" id="gateModal" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gateModalTitle">
-    <div class="modal-hd">
-      <div class="modal-title" id="gateModalTitle">안내</div>
-    </div>
-    <div class="modal-bd" id="gateModalBody">선행 단계를 먼저 완료해주세요</div>
+    <div class="modal-hd" id="gateModalTitle">안내</div>
+    <div class="modal-bd" id="gateModalBody">선행 단계를 먼저 완료해 주세요.</div>
     <div class="modal-actions">
-      <button type="button" class="action-btn primary" id="gateModalOk">확인</button>
+      <button type="button" class="pill primary" id="gateModalOk">확인</button>
     </div>
   </div>
 </div>
 
 <script>
-  // -------------------------------------------------
-  // Step tabs (single-select: switch, not toggle)
-  // -------------------------------------------------
   (function(){
-    const stepBtns = Array.from(document.querySelectorAll('.step-btn'));
-    const boxes = Array.from(document.querySelectorAll('.content-box'));
-    function activate(step){
-      stepBtns.forEach(b => {
-        const on = b.dataset.step === step;
-        b.classList.toggle('active', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      boxes.forEach(x => x.classList.toggle('active', x.dataset.stepBox === step));
-    }
-    stepBtns.forEach(b => b.addEventListener('click', () => activate(b.dataset.step)));
-  })();
-
-  // -------------------------------------------------
-  // Round pill click -> open session panel
-  // (Result button has its own link and stops propagation)
-  // -------------------------------------------------
-  (function(){
-    const pills = Array.from(document.querySelectorAll('.round-pill[data-open-href]'));
+    const pills = Array.from(document.querySelectorAll('.round-card[data-open-href]'));
     pills.forEach(p => {
       p.addEventListener('click', () => {
         const href = p.getAttribute('data-open-href');
@@ -684,19 +487,27 @@
     });
   })();
 
-  // -------------------------------------------------
-  // QR actions
-  // -------------------------------------------------
+  (function(){
+    const stepBtns = Array.from(document.querySelectorAll('.step-tab'));
+    const boxes = Array.from(document.querySelectorAll('.content-box'));
+    function activate(step){
+      stepBtns.forEach(b => {
+        const on = b.dataset.step === step;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      boxes.forEach(x => x.classList.toggle('active', x.dataset.stepBox === step));
+    }
+    stepBtns.forEach(b => b.addEventListener('click', () => activate(b.dataset.step)));
+  })();
+
   function safeFilename(s){
-    return (s || '')
-      .trim()
-      .replace(/[\\\/:*?"<>|]/g, '')
-      .replace(/\s+/g, '_');
+    return (s || '').trim().replace(/[\\\/:*?"<>|]/g, '').replace(/\s+/g, '_');
   }
 
   function openQrNewWindowOnly(src){
     const w = window.open(src, '_blank', 'noopener,noreferrer');
-    if (!w) alert('새 창이 차단되어 QR을 열 수 없어요. 브라우저에서 팝업을 허용한 뒤 다시 눌러주세요.');
+    if (!w) alert('새 창이 차단되어 QR을 열 수 없습니다. 팝업을 허용한 뒤 다시 시도해 주세요.');
   }
 
   async function downloadQrPng(src, label){
@@ -717,10 +528,6 @@
     }
   }
 
-
-  // -------------------------------------------------
-  // Minimal modal helpers
-  // -------------------------------------------------
   (function(){
     const modal = document.getElementById('gateModal');
     const btnOk = document.getElementById('gateModalOk');
@@ -734,34 +541,20 @@
     window.openGateModal = function(message){
       if (!modal) return;
       const body = document.getElementById('gateModalBody');
-      if (body) body.textContent = message || '선행 단계를 먼저 완료해주세요';
+      if (body) body.textContent = message || '선행 단계를 먼저 완료해 주세요.';
       modal.classList.add('show');
       modal.setAttribute('aria-hidden', 'false');
-      // focus
       if (btnOk) btnOk.focus();
     };
 
     if (btnOk) btnOk.addEventListener('click', close);
-
-    if (modal) {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) close();
-      });
-    }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') close();
-    });
+    if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   })();
 
-  // -------------------------------------------------
-  // Finalize flow (server-connected, v2)
-  // Guarded by roundPanel + SID (prevents API calls when open_panel is off)
-  // -------------------------------------------------
   (function(){
     const CODE = "{{ code }}";
     const SID = "{{ sid }}";
-
     const roundPanel = document.getElementById('roundPanel');
     if (!roundPanel || !SID) return;
 
@@ -769,28 +562,21 @@
 
     const btnExclude = document.getElementById('btnExclude');
     const btnFinalize = document.getElementById('btnFinalize');
-
     const boxExclude = document.getElementById('boxExclude');
     const boxFinalize = document.getElementById('boxFinalize');
-
     const btnResultSave = document.getElementById('btnResultSave');
     const badgeSurvey = document.getElementById('badgeSurvey');
     const finalizeTopHint = document.getElementById('finalizeTopHint');
     const finalizeSavedMsg = document.getElementById('finalizeSavedMsg');
     const resultLink = document.getElementById('resultLink');
-
-
     const btnExcludeYes = document.getElementById('btnExcludeYes');
     const btnExcludeNo = document.getElementById('btnExcludeNo');
     const excludeReasons = document.getElementById('excludeReasons');
-
     const btnSurveySubmit = document.getElementById('btnSurveySubmit');
 
     let exclusionResolved = false;
     let surveySubmitted = false;
     let finalized = false;
-
-    const GATE_MSG = '선행 단계를 먼저 완료해주세요';
 
     function setActive(btn, on){
       if (!btn) return;
@@ -806,18 +592,13 @@
     }
 
     function updateGates(){
-      // ✅ '결과' 버튼은 참여 제외 처리 완료 후 열 수 있게
       setAriaEnabled(btnFinalize, exclusionResolved);
+      setAriaEnabled(btnResultSave, surveySubmitted && !finalized);
 
-      // ✅ '결과 저장'은 설문 제출 후 활성화(UX 게이트)
-      const canSave = !!surveySubmitted;
-      setAriaEnabled(btnResultSave, canSave);
-
-      // 배지/힌트 상태
       if (badgeSurvey){
         badgeSurvey.classList.toggle('done', !!surveySubmitted);
         badgeSurvey.classList.toggle('todo', !surveySubmitted);
-        badgeSurvey.textContent = surveySubmitted ? '설문 완료' : '설문 미완료(권장)';
+        badgeSurvey.textContent = surveySubmitted ? '설문 완료' : '설문 미완료';
       }
       if (finalizeTopHint){
         finalizeTopHint.textContent = surveySubmitted
@@ -825,7 +606,6 @@
           : '결과 저장을 완료하려면 교사 설문을 먼저 제출해 주세요.';
       }
     }
-
 
     async function apiGetState(){
       const res = await fetch(`${API_BASE}/state`, { cache: 'no-store' });
@@ -854,6 +634,7 @@
       box.style.display = show ? 'block' : 'none';
       setActive(btn, show);
     }
+
     function allReasonsFilled(){
       if (!excludeReasons) return true;
       const inputs = Array.from(excludeReasons.querySelectorAll('input[data-reason-for]'));
@@ -861,7 +642,6 @@
       return inputs.every(i => (i.value || '').trim().length > 0);
     }
 
-    
     function escapeHtml(s){
       return String(s || '')
         .replace(/&/g, '&amp;')
@@ -870,10 +650,10 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     }
-    
+
     function renderExcludedSummary(items){
       if (!boxExclude) return;
-    
+
       const rows = (items || []).map(x => {
         const n = escapeHtml(x.student_name);
         const r = escapeHtml(x.reason);
@@ -882,54 +662,44 @@
                   <div style="font-weight:800; color:#374151; line-height:1.35;">${r}</div>
                 </div>`;
       }).join('');
-    
+
       boxExclude.innerHTML = `
         <div style="font-weight:950;">참여 제외 학생</div>
-        <div style="margin-top:10px; border:1px solid #eef2f7; border-radius:12px; padding:10px; background:#fff;">
+        <div style="margin-top:10px; border:1px solid #eef2f7; border-radius:10px; padding:10px; background:#fff;">
           ${rows || '<div class="small">저장된 항목이 없습니다.</div>'}
         </div>
         <div class="small" style="margin-top:10px;">저장되었습니다.</div>
       `;
     }
 
+    const btnExcludeSaveReasons = document.getElementById('btnExcludeSaveReasons');
+    if (btnExcludeSaveReasons) {
+      btnExcludeSaveReasons.addEventListener('click', async () => {
+        if (!excludeReasons) return;
+        if (!allReasonsFilled()){
+          alert('모든 학생의 사유를 입력해 주세요.');
+          return;
+        }
 
-const btnExcludeSaveReasons = document.getElementById('btnExcludeSaveReasons');
-if (btnExcludeSaveReasons) {
-  btnExcludeSaveReasons.addEventListener('click', async () => {
-    if (!excludeReasons){
-      alert('사유 입력 영역을 찾을 수 없습니다.');
-      return;
+        const inputs = Array.from(excludeReasons.querySelectorAll('input[data-reason-for]'));
+        const items = inputs.map(i => ({
+          student_name: i.getAttribute('data-reason-for'),
+          reason: (i.value || '').trim()
+        }));
+
+        try{
+          await apiPost('exclusions', { mode: 'exclude', items });
+          exclusionResolved = true;
+          updateGates();
+          excludeReasons.style.display = 'none';
+          renderExcludedSummary(items);
+          boxExclude.style.display = 'block';
+          setActive(btnExclude, true);
+        }catch(e){
+          alert('저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
+        }
+      });
     }
-
-    if (!allReasonsFilled()){
-      alert('모든 학생의 사유를 입력해 주세요.');
-      return;
-    }
-
-    const inputs = Array.from(excludeReasons.querySelectorAll('input[data-reason-for]'));
-    const items = inputs.map(i => ({
-      student_name: i.getAttribute('data-reason-for'),
-      reason: (i.value || '').trim()
-    }));
-
-    try{
-      await apiPost('exclusions', { mode: 'exclude', items });
-
-      exclusionResolved = true;
-      updateGates();
-
-      excludeReasons.style.display = 'none';
-
-      renderExcludedSummary(items);
-
-      boxExclude.style.display = 'block';
-      setActive(btnExclude, true);
-    }catch(e){
-      alert('저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
-    }
-  });
-}
-
 
     async function refreshFromServer(){
       try{
@@ -939,10 +709,8 @@ if (btnExcludeSaveReasons) {
         exclusionResolved = !!st.exclusions_resolved;
         surveySubmitted = !!st.survey_submitted;
         finalized = !!st.finalized;
-
         updateGates();
 
-        // ✅ 저장된 참여 제외 있으면 요약 표시
         const savedExcluded = Array.isArray(st.exclusions)
           ? st.exclusions.filter(x => x && x.excluded && (String(x.reason || '').trim().length > 0))
           : [];
@@ -950,33 +718,23 @@ if (btnExcludeSaveReasons) {
         if (exclusionResolved && savedExcluded.length > 0){
           if (excludeReasons) excludeReasons.style.display = 'none';
           renderExcludedSummary(savedExcluded);
-
-          if (btnExcludeYes) btnExcludeYes.style.display = 'none';
-          if (btnExcludeNo) btnExcludeNo.style.display = 'none';
         }
 
-        // ✅ 이미 finalized면 "저장됨" 표시 + 저장버튼 비활성
         if (finalized){
           if (finalizeSavedMsg) finalizeSavedMsg.style.display = 'block';
-
           if (btnResultSave){
             btnResultSave.textContent = '이미 저장됨';
             btnResultSave.classList.add('is-disabled');
             btnResultSave.setAttribute('aria-disabled', 'true');
           }
         }
-      } catch(e){
-        // silent
+      } catch(e) {
+        // 네트워크 상태 확인 실패는 화면 사용을 막지 않습니다.
       }
     }
 
-    // Exclude panel open/close
-    if (btnExclude) {
-      btnExclude.addEventListener('click', () => toggleBox(btnExclude, boxExclude));
-    }
+    if (btnExclude) btnExclude.addEventListener('click', () => toggleBox(btnExclude, boxExclude));
 
-
-    // When no incomplete students: confirm -> mark exclusion resolved on server
     window.markExclusionResolved = async function(){
       try{
         await apiPost('exclusions', { mode: 'no_exclude' });
@@ -988,9 +746,8 @@ if (btnExcludeSaveReasons) {
       }catch(e){
         alert('저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
       }
-    }
+    };
 
-    // Exclusion decisions
     if (btnExcludeNo) {
       btnExcludeNo.addEventListener('click', async () => {
         try{
@@ -998,13 +755,12 @@ if (btnExcludeSaveReasons) {
           exclusionResolved = true;
           if (excludeReasons) excludeReasons.style.display = 'none';
           updateGates();
-          window.openGateModal('확인했습니다. 학생 참여 후 다시 회차 마무리해주세요.');
+          window.openGateModal('확인되었습니다. 학생 참여 후 다시 회차를 마무리해 주세요.');
         }catch(e){
           alert('저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
         }
       });
     }
-
 
     if (btnExcludeYes) {
       btnExcludeYes.addEventListener('click', () => {
@@ -1013,7 +769,7 @@ if (btnExcludeSaveReasons) {
         updateGates();
       });
     }
-    
+
     if (excludeReasons) {
       excludeReasons.addEventListener('input', () => {
         exclusionResolved = allReasonsFilled();
@@ -1021,13 +777,11 @@ if (btnExcludeSaveReasons) {
       });
     }
 
-
     function getRadio(name){
       const el = document.querySelector(`input[name="${name}"]:checked`);
       return el ? el.value : null;
     }
 
-    // Survey submit
     if (btnSurveySubmit) {
       btnSurveySubmit.addEventListener('click', async () => {
         const payload = {
@@ -1053,16 +807,14 @@ if (btnExcludeSaveReasons) {
       });
     }
 
-    // ✅ '결과' 버튼: 결과 박스 열기(설문/저장 유도)
     if (btnFinalize) {
       btnFinalize.addEventListener('click', () => {
         const disabled = btnFinalize.getAttribute('aria-disabled') === 'true';
-        if (disabled) return window.openGateModal(GATE_MSG);
+        if (disabled) return window.openGateModal('참여 제외 학생 확인을 먼저 완료해 주세요.');
         toggleBox(btnFinalize, boxFinalize);
       });
     }
 
-    // ✅ 결과 저장 버튼: finalize 호출 후, 기존 '결과 보기' 페이지(analysis)로 연결
     if (btnResultSave) {
       btnResultSave.addEventListener('click', async () => {
         const disabled = btnResultSave.getAttribute('aria-disabled') === 'true';
@@ -1072,17 +824,15 @@ if (btnExcludeSaveReasons) {
           const res = await apiPost('finalize', {});
           finalized = true;
           updateGates();
-
           if (finalizeSavedMsg) finalizeSavedMsg.style.display = 'block';
 
           const fallbackUrl = `/teacher/class/${CODE}/analysis?sid=${SID}`;
           const resultUrl = (res && res.result_url) ? res.result_url : fallbackUrl;
-
           if (resultLink) resultLink.href = resultUrl;
           window.open(resultUrl, '_blank', 'noopener,noreferrer');
         }catch(e){
           if (String(e.message) === 'NOT_READY'){
-            window.openGateModal(GATE_MSG);
+            window.openGateModal('선행 단계를 먼저 완료해 주세요.');
           } else {
             alert('최종 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
           }
@@ -1090,11 +840,8 @@ if (btnExcludeSaveReasons) {
       });
     }
 
-
-
     refreshFromServer();
   })();
-  
 </script>
 
 {% endblock %}

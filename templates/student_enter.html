@@ -4,9 +4,15 @@
   <h2>학생 입장</h2>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post">
-    학급 코드<br><input name="code" placeholder="예: A1B2C3"><br><br>
-    이름<br><input name="name" placeholder="학생 이름"><br><br>
-    개인 코드(6자리 숫자)<br><input name="pin" inputmode="numeric" maxlength="6" placeholder="예: 123456"><br><br>
+    <label style="display:block; text-align:left; font-weight:800; margin-bottom:6px;">학급 코드</label>
+    <input name="code" placeholder="예: A1B2C3"><br><br>
+
+    <label style="display:block; text-align:left; font-weight:800; margin-bottom:6px;">이름</label>
+    <input name="name" placeholder="학생 이름" autocomplete="off"><br><br>
+
+    <label style="display:block; text-align:left; font-weight:800; margin-bottom:6px;">개인 코드(6자리 숫자)</label>
+    <input name="pin" inputmode="numeric" maxlength="6" placeholder="예: 123456" autocomplete="off"><br><br>
+
     <button>입장</button>
   </form>
 </div>
