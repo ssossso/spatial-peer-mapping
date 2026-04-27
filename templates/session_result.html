@@ -1,71 +1,141 @@
 {% extends "base.html" %}
 {% block content %}
 {% set display_sid = sid|int - 1 %}
-<div class="card" style="max-width:980px; text-align:left;">
-  <h2 style="margin:0 0 6px 0; text-align:center;">{{ cls.name }}</h2>
-  <p style="margin:0 0 14px 0; text-align:center;">학급 코드: <b>{{ code }}</b> / {{ display_sid }}회차 결과</p>
 
-  <div class="card" style="background:#f8fafc; max-width:none; margin:0 0 14px 0; text-align:left;">
-    <div style="font-weight:950; margin-bottom:8px;">회차 요약</div>
-    <ul style="margin:0; padding-left:18px;">
-      <li>학생 참여: <b>{{ done }}</b> / {{ total }}</li>
-      <li>교사 관계 인식 배치: {% if teacher_has %}<b>완료</b>{% else %}<b>미완료</b>{% endif %}</li>
-      <li>참여 제외 처리: {% if state.exclusions_resolved %}<b>완료</b>{% else %}<b>미완료</b>{% endif %}</li>
-      <li>교사 설문: {% if state.survey_submitted %}<b>제출</b>{% else %}<b>미제출</b>{% endif %}</li>
-      <li>최종 저장: {% if state.finalized %}<b>완료</b>{% else %}<b>미완료</b>{% endif %}</li>
-    </ul>
+<div class="card" style="max-width:1120px; text-align:left;">
+  <h2 style="margin:0 0 6px 0; text-align:center;">{{ display_sid }}회차 관계 지도 분석 결과</h2>
+  <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
+    {{ cls.name }} / 학급 코드 <b>{{ code }}</b>
+  </p>
+
+  <div class="result-grid">
+    <section class="result-main">
+      <div class="panel-head">
+        <div>
+          <div class="section-title">MDS 기반 관계 지도</div>
+          <div class="subtitle">직접 거리와 제3자 배치 패턴을 함께 반영한 학급 구조입니다.</div>
+        </div>
+        <span id="generatedAt" class="status">생성 중</span>
+      </div>
+
+      <canvas id="spmCanvas" width="760" height="520" class="map"></canvas>
+
+      <div class="legend">
+        <span><b class="dot core"></b>밀집</span>
+        <span><b class="dot boundary"></b>경계</span>
+        <span><b class="dot outlier"></b>비교적 떨어진 위치</span>
+      </div>
+    </section>
+
+    <aside class="result-side">
+      <div class="metric-row">
+        <div class="metric-box">
+          <div class="metric-label">참여</div>
+          <div class="metric-value"><span id="nSubmitted">-</span>/<span id="nStudents">-</span></div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">밀집 영역</div>
+          <div class="metric-value" id="nClusters">-</div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="section-title">구조 요약</div>
+        <p id="summaryShort">결과를 불러오는 중입니다.</p>
+        <p id="summaryStructure" class="subtitle"></p>
+      </div>
+
+      <div class="info-box">
+        <div class="section-title">경계 위치 학생</div>
+        <div id="boundaryList" class="chip-list">-</div>
+      </div>
+
+      <div class="info-box">
+        <div class="section-title">비교적 떨어진 위치</div>
+        <div id="outlierList" class="chip-list">-</div>
+      </div>
+    </aside>
   </div>
 
-  <div style="border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; background:#fff;">
-    <div style="padding:12px 14px; background:#f8fafc; border-bottom:1px solid #eef2f7;">
-      <div style="font-weight:950;">DBSCAN 관계 구조 결과</div>
-      <div class="subtitle" style="margin-top:4px;">
-        학생들이 배치한 거리 정보를 합쳐서 밀집, 경계, 고립 구조를 요약합니다.
-      </div>
-    </div>
+  <section class="info-box" style="margin-top:14px;">
+    <div class="section-title">학생별 DBSCAN 분류</div>
+    <div id="studentRows" class="student-grid"></div>
+  </section>
 
-    <div style="padding:14px;">
-      <canvas id="dbscanCanvas" width="920" height="520" style="width:100%; height:auto; border:1px solid #e5e7eb; border-radius:12px; background:#fff;"></canvas>
+  <details class="info-box" style="margin-top:14px;">
+    <summary class="section-title" style="cursor:pointer;">k-means 관계 집단 개요</summary>
+    <div class="subtitle" style="margin-top:6px;">k-means는 주 분석이 아니라 관계 집단을 빠르게 훑어보기 위한 보조 요약입니다.</div>
+    <div id="kmeansRows" class="student-grid" style="margin-top:10px;"></div>
+  </details>
 
-      <div style="margin-top:12px; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px;">
-        <div class="metric-box">
-          <div class="metric-label">분석 학생</div>
-          <div class="metric-value" id="m_total">-</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-label">밀집</div>
-          <div class="metric-value" id="m_dense">-</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-label">경계</div>
-          <div class="metric-value" id="m_boundary">-</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-label">고립</div>
-          <div class="metric-value" id="m_isolated">-</div>
-        </div>
-      </div>
-
-      <div id="dbscanSummary" style="margin-top:12px; padding:12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; font-weight:800; line-height:1.55;">
-        결과를 불러오는 중입니다.
-      </div>
-
-      <div style="margin-top:12px; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;">
-        <div style="padding:10px 12px; background:#f8fafc; font-weight:950;">학생별 구조 분류</div>
-        <div id="studentStateRows" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; padding:10px;"></div>
-      </div>
-
-      <div id="dbscanNote" class="subtitle" style="margin-top:10px;"></div>
-    </div>
-  </div>
+  <section class="caution-box">
+    <div class="section-title">해석 시 유의점</div>
+    <p id="cautionText">본 결과는 학생 관계의 원인을 단독으로 설명하거나 개별 학생을 평가·진단하지 않습니다. 반드시 교사의 관찰, 상담 내용, 학급 맥락과 함께 해석해야 합니다.</p>
+  </section>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     <a class="pill" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">회차 화면으로 돌아가기</a>
-    <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" style="text-decoration:none;">자세한 분석 화면 보기</a>
+    <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" style="text-decoration:none;">기존 분석 화면 보기</a>
   </div>
 </div>
 
 <style>
+  .result-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 14px;
+  }
+  .result-main,
+  .result-side,
+  .info-box,
+  .caution-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+    box-sizing: border-box;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .section-title { font-weight: 950; margin: 0; }
+  .map {
+    width: 100%;
+    height: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    color: #374151;
+    font-weight: 800;
+    font-size: 13px;
+  }
+  .dot {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    margin-right: 5px;
+    vertical-align: -1px;
+  }
+  .dot.core { background: #111827; }
+  .dot.boundary { background: #94a3b8; border: 1px dashed #111827; }
+  .dot.outlier { background: #fff; border: 2px solid #111827; }
+  .metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
   .metric-box {
     border: 1px solid #e5e7eb;
     border-radius: 10px;
@@ -83,9 +153,52 @@
     font-weight: 950;
     color: #111827;
   }
-  @media(max-width: 760px) {
-    .metric-box { padding: 8px; }
-    .metric-value { font-size: 18px; }
+  .chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    font-weight: 800;
+  }
+  .chip-soft {
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: #f8fafc;
+    font-size: 13px;
+  }
+  .student-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .student-card {
+    border: 1px solid #eef2f7;
+    border-radius: 10px;
+    padding: 9px 10px;
+    background: #fff;
+  }
+  .student-card b { display:block; margin-bottom:3px; }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .caution-box {
+    margin-top: 14px;
+    background: #fff7ed;
+    border-color: #fed7aa;
+    color: #7c2d12;
+  }
+  @media(max-width: 900px) {
+    .result-grid { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -93,161 +206,156 @@
 (function(){
   const code = "{{ code }}";
   const sid = "{{ sid }}";
-  const canvas = document.getElementById('dbscanCanvas');
+  const canvas = document.getElementById('spmCanvas');
   const ctx = canvas.getContext('2d');
-  const summary = document.getElementById('dbscanSummary');
-  const note = document.getElementById('dbscanNote');
+  const palette = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#0891b2', '#ca8a04'];
 
-  function setMetric(id, value){
+  function text(id, value){
     const el = document.getElementById(id);
-    if (el) el.textContent = value ?? '-';
+    if (el) el.textContent = value;
   }
 
-  function clearCanvas(message){
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#111827';
-    ctx.font = '16px system-ui';
-    ctx.fillText(message, 24, 42);
+  function chips(id, items){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    if (!items || items.length === 0) {
+      el.textContent = '없음';
+      return;
+    }
+    for (const item of items) {
+      const s = document.createElement('span');
+      s.className = 'chip-soft';
+      s.textContent = item;
+      el.appendChild(s);
+    }
   }
 
-  function fit(points){
-    if (!points || points.length === 0) return [];
-    const xs = points.map(p => Number(p.x) || 0);
-    const ys = points.map(p => Number(p.y) || 0);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const rangeX = (maxX - minX) || 1;
-    const rangeY = (maxY - minY) || 1;
-    const pad = 0.08;
-    return points.map(p => ({
-      ...p,
-      cx: canvas.width * pad + ((Number(p.x) || 0) - minX) / rangeX * canvas.width * (1 - pad * 2),
-      cy: canvas.height * pad + ((Number(p.y) || 0) - minY) / rangeY * canvas.height * (1 - pad * 2),
-    }));
+  function clusterColor(cid){
+    if (cid === null || cid === undefined || cid < 0) return '#111827';
+    return palette[Math.abs(cid) % palette.length];
   }
 
-  function drawLabel(p){
-    const name = String(p.name || '').trim();
-    if (!name) return;
+  function drawLabel(p, x, y){
+    const name = String(p.name || '');
     ctx.save();
     ctx.font = '12px system-ui';
     ctx.textBaseline = 'middle';
     const w = ctx.measureText(name).width + 14;
     const h = 20;
-    const x = Math.max(4, Math.min(canvas.width - w - 4, p.cx - w / 2));
-    const y = Math.max(24, Math.min(canvas.height - h - 4, p.cy + 14));
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    const lx = Math.max(4, Math.min(canvas.width - w - 4, x - w / 2));
+    const ly = Math.max(24, Math.min(canvas.height - h - 4, y + 15));
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.strokeStyle = 'rgba(17,24,39,0.18)';
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
+    ctx.roundRect(lx, ly, w, h, 8);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#111827';
-    ctx.fillText(name, x + 7, y + h / 2);
+    ctx.fillText(name, lx + 7, ly + h / 2);
     ctx.restore();
   }
 
-  function drawPoint(p){
-    const state = p.state || 'isolated';
+  function drawMap(students){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    if (state === 'dense') {
-      ctx.fillStyle = '#111827';
-      ctx.beginPath();
-      ctx.arc(p.cx, p.cy, 8, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (state === 'boundary') {
-      ctx.fillStyle = 'rgba(17,24,39,0.25)';
-      ctx.strokeStyle = '#111827';
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.arc(p.cx, p.cy, 9, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    } else {
-      ctx.strokeStyle = '#111827';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(p.cx, p.cy, 10, 0, Math.PI * 2);
-      ctx.stroke();
+    ctx.strokeStyle = 'rgba(17,24,39,0.08)';
+    for (let i = 1; i < 4; i++) {
+      const x = canvas.width * i / 4;
+      const y = canvas.height * i / 4;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
     ctx.restore();
-    drawLabel(p);
-  }
 
-  function stateLabel(state){
-    if (state === 'dense') return '밀집';
-    if (state === 'boundary') return '경계';
-    return '고립';
-  }
-
-  function renderStudentStates(points){
-    const box = document.getElementById('studentStateRows');
-    if (!box) return;
-    box.innerHTML = '';
-    if (!points || points.length === 0) {
-      box.textContent = '표시할 학생별 결과가 아직 없습니다.';
+    if (!students || students.length === 0) {
+      ctx.fillStyle = '#111827';
+      ctx.font = '16px system-ui';
+      ctx.fillText('표시할 결과가 아직 없습니다.', 24, 42);
       return;
     }
-    for (const p of points) {
-      const item = document.createElement('div');
-      item.style.border = '1px solid #eef2f7';
-      item.style.borderRadius = '10px';
-      item.style.padding = '8px 10px';
-      item.style.background = '#fff';
-      item.innerHTML = `<div style="font-weight:950;">${p.name || ''}</div><div class="subtitle">${stateLabel(p.state)}</div>`;
-      box.appendChild(item);
+
+    for (const p of students) {
+      const x = 40 + (Number(p.x) || 0.5) * (canvas.width - 80);
+      const y = 40 + (Number(p.y) || 0.5) * (canvas.height - 80);
+      ctx.save();
+      ctx.lineWidth = 2;
+      if (p.status === 'core') {
+        ctx.fillStyle = clusterColor(p.cluster_id);
+        ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+      } else if (p.status === 'boundary') {
+        ctx.fillStyle = clusterColor(p.cluster_id);
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = '#111827';
+        ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#111827';
+        ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      ctx.restore();
+      drawLabel(p, x, y);
+    }
+  }
+
+  function renderStudents(students){
+    const box = document.getElementById('studentRows');
+    if (!box) return;
+    box.innerHTML = '';
+    for (const p of students || []) {
+      const card = document.createElement('div');
+      card.className = 'student-card';
+      card.innerHTML = `<b>${p.name || ''}</b><span class="subtitle">${p.status_label || ''}</span>`;
+      box.appendChild(card);
+    }
+    if (!box.children.length) box.textContent = '표시할 학생별 결과가 아직 없습니다.';
+  }
+
+  function renderKmeans(data){
+    const box = document.getElementById('kmeansRows');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!data || !data.enabled) {
+      box.textContent = 'k-means 보조 요약을 표시할 데이터가 아직 부족합니다.';
+      return;
+    }
+    for (const g of data.groups || []) {
+      const card = document.createElement('div');
+      card.className = 'student-card';
+      card.innerHTML = `<b>집단 ${g.group_no} (${g.size}명)</b><span class="subtitle">${(g.members || []).join(', ') || '없음'}</span>`;
+      box.appendChild(card);
     }
   }
 
   function render(payload){
-    if (!payload || payload.error) {
-      clearCanvas('분석 결과를 불러오지 못했습니다.');
-      summary.textContent = payload && payload.error ? String(payload.error) : '분석 결과를 불러오지 못했습니다.';
+    if (!payload || !payload.ok) {
+      text('summaryShort', '결과를 불러오지 못했습니다.');
+      drawMap([]);
       return;
     }
-
-    const counts = payload.counts || {};
-    const points = fit(payload.points || []);
-
-    setMetric('m_total', counts.n_total ?? points.length);
-    setMetric('m_dense', counts.dense);
-    setMetric('m_boundary', counts.boundary);
-    setMetric('m_isolated', counts.isolated);
-
-    if (points.length < 3 || payload.status === 'no_data') {
-      clearCanvas('분석할 학생 데이터가 아직 부족합니다.');
-      summary.textContent = 'DBSCAN 분석은 최소 3명 이상의 제출 데이터가 있을 때 의미 있게 표시됩니다.';
-      note.textContent = '학생 제출이 더 모이면 이 화면에 관계 구조 결과가 자동으로 표시됩니다.';
-      renderStudentStates(points);
-      return;
-    }
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const p of points) drawPoint(p);
-
-    const teacherSummary = payload.teacher_summary || {};
-    const lines = [
-      teacherSummary.structure_summary,
-      teacherSummary.key_signal,
-      teacherSummary.reflection_prompt
-    ].filter(Boolean);
-    summary.textContent = lines.length ? lines.join(' ') : '분석 결과가 생성되었습니다.';
-
-    const clusterSizes = Array.isArray(counts.cluster_sizes) ? counts.cluster_sizes : [];
-    note.textContent = clusterSizes.length
-      ? `관계 집단 크기: ${clusterSizes.join(', ')}`
-      : '뚜렷한 밀집 집단이 적거나 아직 구조가 약하게 나타납니다.';
-    renderStudentStates(points);
+    text('nSubmitted', payload.n_submitted ?? '-');
+    text('nStudents', payload.n_students ?? '-');
+    text('nClusters', (payload.clusters || []).length);
+    text('generatedAt', payload.generated_at ? payload.generated_at.replace('T', ' ').replace('Z', '') : '생성됨');
+    text('summaryShort', (payload.summary || {}).short || '');
+    text('summaryStructure', (payload.summary || {}).structure || '');
+    text('cautionText', (payload.summary || {}).cautions || '');
+    chips('boundaryList', payload.boundaries || []);
+    chips('outlierList', payload.outliers || []);
+    drawMap(payload.students || []);
+    renderStudents(payload.students || []);
+    renderKmeans(payload.kmeans_optional);
   }
 
-  fetch(`/analysis/class/${code}/${sid}/dbscan_structure.json?refresh=1`)
+  fetch(`/analysis/class/${code}/${sid}/spm_result.json?refresh=1`)
     .then(r => r.json())
     .then(render)
     .catch(() => {
-      clearCanvas('분석 결과를 불러오지 못했습니다.');
-      summary.textContent = '분석 결과를 불러오지 못했습니다. 학생 제출 데이터와 데이터베이스 연결을 확인해 주세요.';
+      text('summaryShort', '결과를 불러오지 못했습니다. 학생 제출 데이터와 데이터베이스 연결을 확인해 주세요.');
+      drawMap([]);
     });
 })();
 </script>
