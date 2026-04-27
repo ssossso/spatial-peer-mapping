@@ -447,16 +447,19 @@
               <textarea id="q7_feedback" rows="3" placeholder="자유롭게 작성" style="margin-top:8px;"></textarea>
             </div>
 
+            <div class="btn-row" style="margin-top:12px;">
+              <button type="button" class="pill primary" id="btnSurveySubmit">설문 완료</button>
+              <span class="small" id="surveyHint">완료 후 결과 보기를 누르면 회차 결과가 저장됩니다.</span>
+            </div>
+
           </div>
 
           <div class="mini-card" id="surveyDoneBox" style="display:none; margin-top:12px; background:#f8fafc;">
             <div style="font-weight:950;">설문 완료</div>
             <div class="small" style="margin-top:6px;">수정이 필요하면 아래 버튼을 눌러 주세요.</div>
-          </div>
-
-          <div class="btn-row" style="margin-top:12px;">
-            <button type="button" class="pill primary" id="btnSurveySubmit">설문 완료</button>
-            <span class="small" id="surveyHint">완료 후 결과 보기를 누르면 회차 결과가 저장됩니다.</span>
+            <div class="btn-row" style="margin-top:10px;">
+              <button type="button" class="pill" id="btnSurveyEdit">설문 수정</button>
+            </div>
           </div>
 
           <div class="btn-row" style="margin-top:12px;">
@@ -584,6 +587,7 @@
     const btnExcludeNo = document.getElementById('btnExcludeNo');
     const excludeReasons = document.getElementById('excludeReasons');
     const btnSurveySubmit = document.getElementById('btnSurveySubmit');
+    const btnSurveyEdit = document.getElementById('btnSurveyEdit');
     const surveyFormBody = document.getElementById('surveyFormBody');
     const surveyDoneBox = document.getElementById('surveyDoneBox');
 
@@ -623,7 +627,6 @@
     function setSurveyCollapsed(collapsed){
       if (surveyFormBody) surveyFormBody.style.display = collapsed ? 'none' : 'block';
       if (surveyDoneBox) surveyDoneBox.style.display = collapsed ? 'block' : 'none';
-      if (btnSurveySubmit) btnSurveySubmit.textContent = collapsed ? '설문 수정' : '설문 완료';
     }
 
     async function apiGetState(){
@@ -843,11 +846,6 @@
 
     if (btnSurveySubmit) {
       btnSurveySubmit.addEventListener('click', async () => {
-        if (surveySubmitted && surveyFormBody && surveyFormBody.style.display === 'none') {
-          setSurveyCollapsed(false);
-          return;
-        }
-
         const payload = {
           q1_help: getRadio('q1_help'),
           q2_new: getRadio('q2_new'),
@@ -867,6 +865,12 @@
         }catch(e){
           alert('설문 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
         }
+      });
+    }
+
+    if (btnSurveyEdit) {
+      btnSurveyEdit.addEventListener('click', () => {
+        setSurveyCollapsed(false);
       });
     }
 
