@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
+{% set display_sid = sid|int - 1 if sid|int >= 2 else sid %}
 <div class="card" style="text-align:left;">
   <h2 style="text-align:center;">{{ cls.name }}</h2>
   <p style="text-align:center;">
     <b>{% if no %}{{ no }}번 {% endif %}{{ name }}</b>
-    <span class="muted" style="margin-left:8px;">{{ session_meta.label if session_meta and session_meta.label else sid ~ '차' }}</span>
+    <span class="muted" style="margin-left:8px;">
+      {{ session_meta.label if session_meta and session_meta.label else display_sid ~ '회차' }}
+    </span>
     <span class="status" style="margin-left:8px;">{{ status }}</span>
   </p>
   <hr>
@@ -14,14 +17,17 @@
     <form method="get" action="" style="display:flex; gap:8px; align-items:center;">
       <select name="sid" onchange="this.form.submit();" style="padding:8px 10px; border-radius:10px; border:1px solid #d1d5db;">
         {% for _sid, meta in cls.sessions|dictsort(true) %}
-          <option value="{{ _sid }}" {% if _sid == sid %}selected{% endif %}>{{ meta.label if meta.label else (_sid ~ '차') }}</option>
+          {% set _display_sid = _sid|int - 1 if _sid|int >= 2 else _sid %}
+          <option value="{{ _sid }}" {% if _sid == sid %}selected{% endif %}>
+            {{ meta.label if meta.label else (_display_sid ~ '회차') }}
+          </option>
         {% endfor %}
       </select>
     </form>
   </div>
 
   {% if session_data.submitted %}
-    <div style="margin:10px 0 12px 0; font-weight:800;">심리적 거리 배치 결과</div>
+    <div style="margin:10px 0 12px 0; font-weight:800;">거리 배치 결과</div>
 
     <div id="preview" style="position:relative; height:420px; border:1px solid #d1d5db; border-radius:12px; background:#fff; overflow:hidden;">
       <div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);">
@@ -65,7 +71,6 @@
           token.textContent = n;
           preview.appendChild(token);
 
-          // 토큰 크기 측정 후 위치 보정
           const px = clamp(center.x + (v.x || 0) - token.offsetWidth/2, 0, rect.width - token.offsetWidth);
           const py = clamp(center.y + (v.y || 0) - token.offsetHeight/2, 0, rect.height - token.offsetHeight);
           token.style.left = px + 'px';
@@ -85,7 +90,6 @@
       }
 
       window.addEventListener('load', () => {
-        // 렌더링 타이밍 보장
         setTimeout(render, 0);
       });
     </script>
