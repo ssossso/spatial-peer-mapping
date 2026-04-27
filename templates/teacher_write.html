@@ -5,7 +5,9 @@
 
   <p style="margin:0 0 14px 0; text-align:center;">
     <b>{{ run.teacher_username }}</b>
-    <span class="muted" style="margin-left:8px;">{{ run.session_id }}회차</span>
+    <span class="muted" style="margin-left:8px;">
+      {% if run.session_id|int >= 2 %}{{ run.session_id|int - 1 }}회차{% else %}{{ run.session_id }}회차{% endif %}
+    </span>
     {% if run.submitted %}
       <span class="status done" style="margin-left:8px;">마무리 완료</span>
     {% elif placements_complete %}

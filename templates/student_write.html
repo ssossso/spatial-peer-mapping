@@ -10,7 +10,7 @@
   <p style="margin:0 0 14px 0; text-align:center;">
     <b>{{ name }}</b>
     <span class="muted" style="margin-left:8px;">
-      {{ session_meta.label if session_meta and session_meta.label else sid ~ '회차' }}
+      {% if sid|int >= 2 %}{{ sid|int - 1 }}회차{% else %}{{ sid }}회차{% endif %}
     </span>
     {% if student_session.submitted %}
       <span class="status" style="margin-left:8px;">제출 완료</span>

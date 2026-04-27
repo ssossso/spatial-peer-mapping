@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
+{% set display_sid = sid|int - 1 %}
 <div class="card" style="max-width:980px; text-align:left;">
   <h2 style="margin:0 0 6px 0; text-align:center;">{{ cls.name }}</h2>
-  <p style="margin:0 0 14px 0; text-align:center;">학급 코드: <b>{{ code }}</b> / {{ sid }}회차 결과</p>
+  <p style="margin:0 0 14px 0; text-align:center;">학급 코드: <b>{{ code }}</b> / {{ display_sid }}회차 결과</p>
 
   <div class="card" style="background:#f8fafc;">
     <div style="font-weight:950; margin-bottom:8px;">회차 요약</div>
@@ -16,14 +17,8 @@
   </div>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-    <a class="pill" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">v2 페이지로 돌아가기</a>
-    <a class="pill" href="/teacher/class/{{ code }}/legacy?sid={{ sid }}" style="text-decoration:none;">(legacy) 기존 화면</a>
-  </div>
-
-  <hr style="margin:16px 0;">
-
-  <div class="subtitle" style="margin-bottom:10px;">
-    이 화면은 “운영 최소 구성” 버전입니다. 다음 단계에서 군집/밀집/고립 요약과 비교 리포트를 여기에 확장합니다.
+    <a class="pill" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">회차 화면으로 돌아가기</a>
+    <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" style="text-decoration:none;">분석 화면 보기</a>
   </div>
 </div>
 {% endblock %}

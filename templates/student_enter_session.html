@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
+{% set display_sid = sid|int - 1 %}
 <div class="card">
   <h2>학생 입장</h2>
   <p class="subtitle">
-    {{ session_label }} 조사 링크로 들어왔습니다. 이름과 개인 코드를 입력하면 시작할 수 있습니다.
+    {{ display_sid }}회차 조사 링크로 들어왔습니다. 이름과 개인 코드를 입력하면 시작할 수 있습니다.
   </p>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post">
@@ -14,7 +15,7 @@
     <input value="{{ code }}" disabled><br><br>
 
     <label style="display:block; text-align:left; font-weight:800; margin-bottom:6px;">회차</label>
-    <input value="{{ session_label }}" disabled><br><br>
+    <input value="{{ display_sid }}회차" disabled><br><br>
 
     <label style="display:block; text-align:left; font-weight:800; margin-bottom:6px;">이름</label>
     <input name="name" placeholder="학생 이름" autocomplete="off"><br><br>
