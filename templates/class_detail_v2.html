@@ -227,7 +227,7 @@
         </div>
         <a
           class="pill"
-          href="/teacher/class/{{ code }}/analysis?sid={{ n }}"
+          href="/teacher/class/{{ code }}/result/{{ n }}"
           target="_blank"
           rel="noopener noreferrer"
           onclick="event.stopPropagation();"
@@ -243,7 +243,7 @@
         <div class="panel-title">{{ display_sid }}회차 조사</div>
         <div class="panel-sub">선택 회차: {{ display_sid }}회차</div>
       </div>
-      <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" target="_blank" rel="noopener noreferrer">분석 화면</a>
+      <a class="pill" href="/teacher/class/{{ code }}/result/{{ sid }}" target="_blank" rel="noopener noreferrer">결과 화면</a>
     </div>
 
     <div class="panel-bd">
@@ -449,7 +449,7 @@
 
           <div class="btn-row" style="margin-top:12px;">
             <button type="button" class="pill primary is-disabled" id="btnResultSave" aria-disabled="true">이번 회차 결과 저장</button>
-            <a class="pill" id="resultLink" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" target="_blank" rel="noopener noreferrer">결과 보기</a>
+            <a class="pill" id="resultLink" href="/teacher/class/{{ code }}/result/{{ sid }}" target="_blank" rel="noopener noreferrer">결과 보기</a>
           </div>
 
           <div class="small" id="finalizeSavedMsg" style="margin-top:8px; display:none;">저장되었습니다.</div>
@@ -852,7 +852,7 @@
           updateGates();
           if (finalizeSavedMsg) finalizeSavedMsg.style.display = 'block';
 
-          const fallbackUrl = `/teacher/class/${CODE}/analysis?sid=${SID}`;
+          const fallbackUrl = `/teacher/class/${CODE}/result/${SID}`;
           const resultUrl = (res && res.result_url) ? res.result_url : fallbackUrl;
           if (resultLink) resultLink.href = resultUrl;
           window.open(resultUrl, '_blank', 'noopener,noreferrer');
