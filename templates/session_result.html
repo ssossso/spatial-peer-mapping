@@ -206,6 +206,8 @@
 (function(){
   const code = "{{ code }}";
   const sid = "{{ sid }}";
+  const initialPayload = {{ spm_payload|tojson }};
+  const initialError = {{ spm_error|tojson }};
   const canvas = document.getElementById('spmCanvas');
   const ctx = canvas.getContext('2d');
   const palette = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#0891b2', '#ca8a04'];
@@ -247,13 +249,31 @@
     const ly = Math.max(24, Math.min(canvas.height - h - 4, y + 15));
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.strokeStyle = 'rgba(17,24,39,0.18)';
-    ctx.beginPath();
-    ctx.roundRect(lx, ly, w, h, 8);
+    roundedRect(ctx, lx, ly, w, h, 8);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = '#111827';
     ctx.fillText(name, lx + 7, ly + h / 2);
     ctx.restore();
+  }
+
+  function roundedRect(ctx, x, y, w, h, r){
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      return;
+    }
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
   }
 
   function drawMap(students){
@@ -350,12 +370,24 @@
     renderKmeans(payload.kmeans_optional);
   }
 
-  fetch(`/analysis/class/${code}/${sid}/spm_result.json?refresh=1`)
-    .then(r => r.json())
+  if (initialPayload && initialPayload.ok) {
+    render(initialPayload);
+  } else if (initialError) {
+    text('summaryShort', `결과 생성 중 오류가 발생했습니다: ${initialError}`);
+    drawMap([]);
+  }
+
+  fetch(`/analysis/class/${code}/${sid}/spm_result.json`)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
     .then(render)
-    .catch(() => {
-      text('summaryShort', '결과를 불러오지 못했습니다. 학생 제출 데이터와 데이터베이스 연결을 확인해 주세요.');
-      drawMap([]);
+    .catch((err) => {
+      if (!initialPayload || !initialPayload.ok) {
+        text('summaryShort', `결과를 불러오지 못했습니다: ${err.message || err}`);
+        drawMap([]);
+      }
     });
 })();
 </script>
