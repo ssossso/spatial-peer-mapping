@@ -710,6 +710,7 @@
         exclusionResolved = !!st.exclusions_resolved;
         surveySubmitted = !!st.survey_submitted;
         finalized = !!st.finalized;
+        fillSurveyForm(st.survey);
         updateGates();
 
         const savedExcluded = Array.isArray(st.exclusions)
@@ -781,6 +782,30 @@
     function getRadio(name){
       const el = document.querySelector(`input[name="${name}"]:checked`);
       return el ? el.value : null;
+    }
+
+    function setRadio(name, value){
+      if (value === null || value === undefined || value === '') return;
+      const el = document.querySelector(`input[name="${name}"][value="${CSS.escape(String(value))}"]`);
+      if (el) el.checked = true;
+    }
+
+    function setTextValue(id, value){
+      const el = document.getElementById(id);
+      if (el) el.value = value || '';
+    }
+
+    function fillSurveyForm(survey){
+      if (!survey) return;
+      setRadio('q1_help', survey.q1_help);
+      setRadio('q2_new', survey.q2_new);
+      setTextValue('q2_detail', survey.q2_detail);
+      setRadio('q3_use', survey.q3_use);
+      setRadio('q4_cmp', survey.q4_cmp);
+      setTextValue('q4_detail', survey.q4_detail);
+      setRadio('q5_conf', survey.q5_conf);
+      setRadio('q6_next', survey.q6_next);
+      setTextValue('q7_feedback', survey.q7_feedback);
     }
 
     if (btnSurveySubmit) {

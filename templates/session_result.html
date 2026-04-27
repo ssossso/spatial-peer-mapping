@@ -5,7 +5,7 @@
   <h2 style="margin:0 0 6px 0; text-align:center;">{{ cls.name }}</h2>
   <p style="margin:0 0 14px 0; text-align:center;">학급 코드: <b>{{ code }}</b> / {{ display_sid }}회차 결과</p>
 
-  <div class="card" style="background:#f8fafc;">
+  <div class="card" style="background:#f8fafc; max-width:none; margin:0 0 14px 0; text-align:left;">
     <div style="font-weight:950; margin-bottom:8px;">회차 요약</div>
     <ul style="margin:0; padding-left:18px;">
       <li>학생 참여: <b>{{ done }}</b> / {{ total }}</li>
@@ -16,9 +16,239 @@
     </ul>
   </div>
 
+  <div style="border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; background:#fff;">
+    <div style="padding:12px 14px; background:#f8fafc; border-bottom:1px solid #eef2f7;">
+      <div style="font-weight:950;">DBSCAN 관계 구조 결과</div>
+      <div class="subtitle" style="margin-top:4px;">
+        학생들이 배치한 거리 정보를 합쳐서 밀집, 경계, 고립 구조를 요약합니다.
+      </div>
+    </div>
+
+    <div style="padding:14px;">
+      <canvas id="dbscanCanvas" width="920" height="520" style="width:100%; height:auto; border:1px solid #e5e7eb; border-radius:12px; background:#fff;"></canvas>
+
+      <div style="margin-top:12px; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px;">
+        <div class="metric-box">
+          <div class="metric-label">분석 학생</div>
+          <div class="metric-value" id="m_total">-</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">밀집</div>
+          <div class="metric-value" id="m_dense">-</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">경계</div>
+          <div class="metric-value" id="m_boundary">-</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-label">고립</div>
+          <div class="metric-value" id="m_isolated">-</div>
+        </div>
+      </div>
+
+      <div id="dbscanSummary" style="margin-top:12px; padding:12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; font-weight:800; line-height:1.55;">
+        결과를 불러오는 중입니다.
+      </div>
+
+      <div style="margin-top:12px; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;">
+        <div style="padding:10px 12px; background:#f8fafc; font-weight:950;">학생별 구조 분류</div>
+        <div id="studentStateRows" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; padding:10px;"></div>
+      </div>
+
+      <div id="dbscanNote" class="subtitle" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     <a class="pill" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">회차 화면으로 돌아가기</a>
-    <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" style="text-decoration:none;">분석 화면 보기</a>
+    <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" style="text-decoration:none;">자세한 분석 화면 보기</a>
   </div>
 </div>
+
+<style>
+  .metric-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px;
+    background: #fbfbfd;
+  }
+  .metric-label {
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .metric-value {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 950;
+    color: #111827;
+  }
+  @media(max-width: 760px) {
+    .metric-box { padding: 8px; }
+    .metric-value { font-size: 18px; }
+  }
+</style>
+
+<script>
+(function(){
+  const code = "{{ code }}";
+  const sid = "{{ sid }}";
+  const canvas = document.getElementById('dbscanCanvas');
+  const ctx = canvas.getContext('2d');
+  const summary = document.getElementById('dbscanSummary');
+  const note = document.getElementById('dbscanNote');
+
+  function setMetric(id, value){
+    const el = document.getElementById(id);
+    if (el) el.textContent = value ?? '-';
+  }
+
+  function clearCanvas(message){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#111827';
+    ctx.font = '16px system-ui';
+    ctx.fillText(message, 24, 42);
+  }
+
+  function fit(points){
+    if (!points || points.length === 0) return [];
+    const xs = points.map(p => Number(p.x) || 0);
+    const ys = points.map(p => Number(p.y) || 0);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const rangeX = (maxX - minX) || 1;
+    const rangeY = (maxY - minY) || 1;
+    const pad = 0.08;
+    return points.map(p => ({
+      ...p,
+      cx: canvas.width * pad + ((Number(p.x) || 0) - minX) / rangeX * canvas.width * (1 - pad * 2),
+      cy: canvas.height * pad + ((Number(p.y) || 0) - minY) / rangeY * canvas.height * (1 - pad * 2),
+    }));
+  }
+
+  function drawLabel(p){
+    const name = String(p.name || '').trim();
+    if (!name) return;
+    ctx.save();
+    ctx.font = '12px system-ui';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(name).width + 14;
+    const h = 20;
+    const x = Math.max(4, Math.min(canvas.width - w - 4, p.cx - w / 2));
+    const y = Math.max(24, Math.min(canvas.height - h - 4, p.cy + 14));
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeStyle = 'rgba(17,24,39,0.18)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#111827';
+    ctx.fillText(name, x + 7, y + h / 2);
+    ctx.restore();
+  }
+
+  function drawPoint(p){
+    const state = p.state || 'isolated';
+    ctx.save();
+    if (state === 'dense') {
+      ctx.fillStyle = '#111827';
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, 8, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (state === 'boundary') {
+      ctx.fillStyle = 'rgba(17,24,39,0.25)';
+      ctx.strokeStyle = '#111827';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawLabel(p);
+  }
+
+  function stateLabel(state){
+    if (state === 'dense') return '밀집';
+    if (state === 'boundary') return '경계';
+    return '고립';
+  }
+
+  function renderStudentStates(points){
+    const box = document.getElementById('studentStateRows');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!points || points.length === 0) {
+      box.textContent = '표시할 학생별 결과가 아직 없습니다.';
+      return;
+    }
+    for (const p of points) {
+      const item = document.createElement('div');
+      item.style.border = '1px solid #eef2f7';
+      item.style.borderRadius = '10px';
+      item.style.padding = '8px 10px';
+      item.style.background = '#fff';
+      item.innerHTML = `<div style="font-weight:950;">${p.name || ''}</div><div class="subtitle">${stateLabel(p.state)}</div>`;
+      box.appendChild(item);
+    }
+  }
+
+  function render(payload){
+    if (!payload || payload.error) {
+      clearCanvas('분석 결과를 불러오지 못했습니다.');
+      summary.textContent = payload && payload.error ? String(payload.error) : '분석 결과를 불러오지 못했습니다.';
+      return;
+    }
+
+    const counts = payload.counts || {};
+    const points = fit(payload.points || []);
+
+    setMetric('m_total', counts.n_total ?? points.length);
+    setMetric('m_dense', counts.dense);
+    setMetric('m_boundary', counts.boundary);
+    setMetric('m_isolated', counts.isolated);
+
+    if (points.length < 3 || payload.status === 'no_data') {
+      clearCanvas('분석할 학생 데이터가 아직 부족합니다.');
+      summary.textContent = 'DBSCAN 분석은 최소 3명 이상의 제출 데이터가 있을 때 의미 있게 표시됩니다.';
+      note.textContent = '학생 제출이 더 모이면 이 화면에 관계 구조 결과가 자동으로 표시됩니다.';
+      renderStudentStates(points);
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of points) drawPoint(p);
+
+    const teacherSummary = payload.teacher_summary || {};
+    const lines = [
+      teacherSummary.structure_summary,
+      teacherSummary.key_signal,
+      teacherSummary.reflection_prompt
+    ].filter(Boolean);
+    summary.textContent = lines.length ? lines.join(' ') : '분석 결과가 생성되었습니다.';
+
+    const clusterSizes = Array.isArray(counts.cluster_sizes) ? counts.cluster_sizes : [];
+    note.textContent = clusterSizes.length
+      ? `관계 집단 크기: ${clusterSizes.join(', ')}`
+      : '뚜렷한 밀집 집단이 적거나 아직 구조가 약하게 나타납니다.';
+    renderStudentStates(points);
+  }
+
+  fetch(`/analysis/class/${code}/${sid}/dbscan_structure.json?refresh=1`)
+    .then(r => r.json())
+    .then(render)
+    .catch(() => {
+      clearCanvas('분석 결과를 불러오지 못했습니다.');
+      summary.textContent = '분석 결과를 불러오지 못했습니다. 학생 제출 데이터와 데이터베이스 연결을 확인해 주세요.';
+    });
+})();
+</script>
 {% endblock %}
