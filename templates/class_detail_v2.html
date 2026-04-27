@@ -342,7 +342,7 @@
 
         <div class="btn-row">
           <button type="button" class="pill" id="btnExclude">참여 제외 학생 확인</button>
-          <button type="button" class="pill primary is-disabled" id="btnFinalize" aria-disabled="true">결과 저장</button>
+          <button type="button" class="pill primary is-disabled" id="btnFinalize" aria-disabled="true">교사 설문</button>
         </div>
 
         <div class="mini-card" id="boxExclude" style="display:none; margin-top:10px;">
@@ -381,15 +381,15 @@
 
         <div class="mini-card" id="boxFinalize" style="display:none; margin-top:10px;">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-            <div style="font-weight:950;">교사 설문 및 결과 저장</div>
+            <div style="font-weight:950;">교사 설문</div>
             <span id="badgeSurvey" class="status todo">설문 미완료</span>
           </div>
 
           <div class="small" style="margin-top:6px;" id="finalizeTopHint">
-            결과 저장을 완료하려면 교사 설문을 먼저 제출해 주세요.
+            결과를 보려면 교사 설문을 먼저 완료해 주세요.
           </div>
 
-          <div class="mini-card" style="margin-top:12px;">
+          <div class="mini-card" id="surveyFormBody" style="margin-top:12px;">
             <div class="radio-group">
               <div style="font-weight:900; margin:0 0 6px 0;">1. 이번 회차의 관계 지도 결과는 학급 내 교우관계를 이해하는 데 도움이 되었습니까?</div>
               {% for i in [1,2,3,4,5] %}
@@ -442,17 +442,21 @@
             </div>
 
             <div class="btn-row">
-              <button type="button" class="pill primary" id="btnSurveySubmit">설문 제출</button>
-              <span class="small" id="surveyHint">설문 제출 후 결과 저장 버튼이 활성화됩니다.</span>
+              <button type="button" class="pill primary" id="btnSurveySubmit">설문 완료</button>
+              <span class="small" id="surveyHint">완료 후 결과 보기를 누르면 회차 결과가 저장됩니다.</span>
             </div>
           </div>
 
-          <div class="btn-row" style="margin-top:12px;">
-            <button type="button" class="pill primary is-disabled" id="btnResultSave" aria-disabled="true">이번 회차 결과 저장</button>
-            <a class="pill" id="resultLink" href="/teacher/class/{{ code }}/result/{{ sid }}" target="_blank" rel="noopener noreferrer">결과 보기</a>
+          <div class="mini-card" id="surveyDoneBox" style="display:none; margin-top:12px; background:#f8fafc;">
+            <div style="font-weight:950;">설문이 완료되었습니다.</div>
+            <div class="small" style="margin-top:6px;">수정이 필요하면 아래의 설문 수정을 눌러 주세요.</div>
           </div>
 
-          <div class="small" id="finalizeSavedMsg" style="margin-top:8px; display:none;">저장되었습니다.</div>
+          <div class="btn-row" style="margin-top:12px;">
+            <a class="pill primary" id="resultLink" href="/teacher/class/{{ code }}/result/{{ sid }}">결과 보기</a>
+          </div>
+
+          <div class="small" id="finalizeSavedMsg" style="margin-top:8px; display:none;">회차 결과가 저장되었습니다.</div>
         </div>
       </div>
     </div>
@@ -565,7 +569,6 @@
     const btnFinalize = document.getElementById('btnFinalize');
     const boxExclude = document.getElementById('boxExclude');
     const boxFinalize = document.getElementById('boxFinalize');
-    const btnResultSave = document.getElementById('btnResultSave');
     const badgeSurvey = document.getElementById('badgeSurvey');
     const finalizeTopHint = document.getElementById('finalizeTopHint');
     const finalizeSavedMsg = document.getElementById('finalizeSavedMsg');
@@ -574,6 +577,8 @@
     const btnExcludeNo = document.getElementById('btnExcludeNo');
     const excludeReasons = document.getElementById('excludeReasons');
     const btnSurveySubmit = document.getElementById('btnSurveySubmit');
+    const surveyFormBody = document.getElementById('surveyFormBody');
+    const surveyDoneBox = document.getElementById('surveyDoneBox');
 
     let exclusionResolved = false;
     let surveySubmitted = false;
@@ -594,7 +599,6 @@
 
     function updateGates(){
       setAriaEnabled(btnFinalize, exclusionResolved);
-      setAriaEnabled(btnResultSave, surveySubmitted && !finalized);
 
       if (badgeSurvey){
         badgeSurvey.classList.toggle('done', !!surveySubmitted);
@@ -603,9 +607,16 @@
       }
       if (finalizeTopHint){
         finalizeTopHint.textContent = surveySubmitted
-          ? '설문이 완료되었습니다. 아래에서 결과 저장을 진행해 주세요.'
-          : '결과 저장을 완료하려면 교사 설문을 먼저 제출해 주세요.';
+          ? '설문이 완료되었습니다. 결과 보기를 누르면 회차 결과가 저장됩니다.'
+          : '결과를 보려면 교사 설문을 먼저 완료해 주세요.';
       }
+      setSurveyCollapsed(!!surveySubmitted);
+    }
+
+    function setSurveyCollapsed(collapsed){
+      if (surveyFormBody) surveyFormBody.style.display = collapsed ? 'none' : 'block';
+      if (surveyDoneBox) surveyDoneBox.style.display = collapsed ? 'block' : 'none';
+      if (btnSurveySubmit) btnSurveySubmit.textContent = collapsed ? '설문 수정' : '설문 완료';
     }
 
     async function apiGetState(){
@@ -724,11 +735,6 @@
 
         if (finalized){
           if (finalizeSavedMsg) finalizeSavedMsg.style.display = 'block';
-          if (btnResultSave){
-            btnResultSave.textContent = '이미 저장됨';
-            btnResultSave.classList.add('is-disabled');
-            btnResultSave.setAttribute('aria-disabled', 'true');
-          }
         }
       } catch(e) {
         // 네트워크 상태 확인 실패는 화면 사용을 막지 않습니다.
@@ -810,6 +816,11 @@
 
     if (btnSurveySubmit) {
       btnSurveySubmit.addEventListener('click', async () => {
+        if (surveySubmitted && surveyFormBody && surveyFormBody.style.display === 'none') {
+          setSurveyCollapsed(false);
+          return;
+        }
+
         const payload = {
           q1_help: getRadio('q1_help'),
           q2_new: getRadio('q2_new'),
@@ -826,7 +837,6 @@
           await apiPost('survey', payload);
           surveySubmitted = true;
           updateGates();
-          alert('설문이 제출되었습니다.');
         }catch(e){
           alert('설문 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
         }
@@ -841,11 +851,10 @@
       });
     }
 
-    if (btnResultSave) {
-      btnResultSave.addEventListener('click', async () => {
-        const disabled = btnResultSave.getAttribute('aria-disabled') === 'true';
-        if (disabled) return window.openGateModal('교사 설문을 먼저 제출해 주세요.');
-
+    if (resultLink) {
+      resultLink.addEventListener('click', async (event) => {
+        event.preventDefault();
+        if (!surveySubmitted) return window.openGateModal('교사 설문을 먼저 완료해 주세요.');
         try{
           const res = await apiPost('finalize', {});
           finalized = true;
@@ -855,12 +864,12 @@
           const fallbackUrl = `/teacher/class/${CODE}/result/${SID}`;
           const resultUrl = (res && res.result_url) ? res.result_url : fallbackUrl;
           if (resultLink) resultLink.href = resultUrl;
-          window.open(resultUrl, '_blank', 'noopener,noreferrer');
+          window.location.href = resultUrl;
         }catch(e){
           if (String(e.message) === 'NOT_READY'){
-            window.openGateModal('선행 단계를 먼저 완료해 주세요.');
+            window.openGateModal('참여 제외 학생 확인과 교사 설문을 먼저 완료해 주세요.');
           } else {
-            alert('최종 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
+            alert('결과 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
           }
         }
       });

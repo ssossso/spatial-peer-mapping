@@ -116,7 +116,7 @@
     flex-wrap: wrap;
     margin-top: 10px;
     color: #374151;
-    font-weight: 800;
+    font-weight: 500;
     font-size: 13px;
   }
   .term-tip {
@@ -160,7 +160,7 @@
     vertical-align: -1px;
   }
   .dot.core { background: #111827; }
-  .dot.boundary { background: #94a3b8; border: 1px dashed #111827; }
+  .dot.boundary { background: #9ca3af; border: 1px dashed #4b5563; }
   .dot.outlier { background: #fff; border: 2px solid #111827; }
   .metric-row {
     display: grid;
@@ -194,6 +194,7 @@
     display: block;
     margin-bottom: 5px;
     font-size: 13px;
+    font-weight: 500;
   }
   .chip-list {
     display: flex;
@@ -279,7 +280,7 @@
   const initialError = {{ spm_error|tojson }};
   const canvas = document.getElementById('spmCanvas');
   const ctx = canvas.getContext('2d');
-  const palette = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#0891b2', '#ca8a04'];
+  const palette = ['#111827', '#4b5563', '#6b7280', '#374151', '#9ca3af', '#1f2937'];
 
   function text(id, value){
     const el = document.getElementById(id);
@@ -402,19 +403,31 @@
 
   function drawDenseFog(students){
     const dense = (students || []).filter(p => p.status === 'core');
-    if (dense.length === 0) return;
+    if (dense.length < 2) return;
+
+    const groups = new Map();
+    for (const p of dense) {
+      const key = String(p.cluster_id ?? 'dense');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
 
     ctx.save();
-    for (const p of dense) {
-      const pt = canvasPoint(p);
-      const color = clusterColor(p.cluster_id);
-      const g = ctx.createRadialGradient(pt.x, pt.y, 8, pt.x, pt.y, 92);
-      g.addColorStop(0, hexToRgba(color, 0.22));
-      g.addColorStop(0.45, hexToRgba(color, 0.12));
-      g.addColorStop(1, hexToRgba(color, 0));
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const pts = group.map(canvasPoint);
+      const cx = pts.reduce((sum, p) => sum + p.x, 0) / pts.length;
+      const cy = pts.reduce((sum, p) => sum + p.y, 0) / pts.length;
+      const maxSpread = Math.max(...pts.map(p => Math.hypot(p.x - cx, p.y - cy)), 42);
+      const radius = Math.min(170, maxSpread + 76);
+      const alpha = Math.min(0.28, 0.06 + group.length * 0.035);
+      const g = ctx.createRadialGradient(cx, cy, 8, cx, cy, radius);
+      g.addColorStop(0, `rgba(17,24,39,${alpha})`);
+      g.addColorStop(0.55, `rgba(17,24,39,${alpha * 0.45})`);
+      g.addColorStop(1, 'rgba(17,24,39,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 92, 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
