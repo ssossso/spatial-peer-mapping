@@ -3,7 +3,7 @@
 {% set display_sid = sid|int - 1 %}
 
 <div class="card" style="max-width:1120px; text-align:left;">
-  <h2 style="margin:0 0 6px 0; text-align:center;">{{ display_sid }}회차 관계 지도 분석 결과</h2>
+  <h2 style="margin:0 0 6px 0; text-align:center;">{{ display_sid }}회차 관계 지도 결과</h2>
   <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
     {{ cls.name }} / 학급 코드 <b>{{ code }}</b>
   </p>
@@ -12,8 +12,8 @@
     <section class="result-main">
       <div class="panel-head">
         <div>
-          <div class="section-title">MDS 기반 관계 지도</div>
-          <div class="subtitle">직접 거리와 제3자 배치 패턴을 함께 반영한 학급 구조입니다.</div>
+          <div class="section-title">관계 지도</div>
+          <div class="subtitle">학생들이 느낀 거리감을 모아 학급 전체 흐름으로 정리했습니다.</div>
         </div>
         <span id="generatedAt" class="status">생성 중</span>
       </div>
@@ -21,9 +21,9 @@
       <canvas id="spmCanvas" width="760" height="520" class="map"></canvas>
 
       <div class="legend">
-        <span><b class="dot core"></b>밀집</span>
-        <span><b class="dot boundary"></b>경계</span>
-        <span><b class="dot outlier"></b>비교적 떨어진 위치</span>
+        <span><b class="dot core"></b>가까운 관계 영역</span>
+        <span><b class="dot boundary"></b>사이 위치</span>
+        <span><b class="dot outlier"></b>떨어진 위치</span>
       </div>
     </section>
 
@@ -34,55 +34,54 @@
           <div class="metric-value"><span id="nSubmitted">-</span>/<span id="nStudents">-</span></div>
         </div>
         <div class="metric-box">
-          <div class="metric-label">밀집 영역</div>
+          <div class="metric-label">관계 영역</div>
           <div class="metric-value" id="nClusters">-</div>
         </div>
       </div>
 
-      <div class="info-box">
-        <div class="section-title">구조 요약</div>
+      <div class="info-box compact">
+        <div class="section-title">한 줄 요약</div>
         <p id="summaryShort">결과를 불러오는 중입니다.</p>
-        <p id="summaryStructure" class="subtitle"></p>
       </div>
 
-      <div class="info-box">
-        <div class="section-title">경계 위치 학생</div>
-        <div id="boundaryList" class="chip-list">-</div>
-      </div>
-
-      <div class="info-box">
-        <div class="section-title">비교적 떨어진 위치</div>
-        <div id="outlierList" class="chip-list">-</div>
+      <div class="info-box compact">
+        <div class="section-title">명단 요약</div>
+        <div class="group-list">
+          <div>
+            <b>가까운 관계 영역</b>
+            <div id="coreList" class="chip-list">-</div>
+          </div>
+          <div>
+            <b>사이 위치</b>
+            <div id="boundaryList" class="chip-list">-</div>
+          </div>
+          <div>
+            <b>떨어진 위치</b>
+            <div id="outlierList" class="chip-list">-</div>
+          </div>
+        </div>
       </div>
     </aside>
   </div>
 
-  <section class="info-box" style="margin-top:14px;">
-    <div class="section-title">학생별 DBSCAN 분류</div>
-    <div id="studentRows" class="student-grid"></div>
-  </section>
-
-  <details class="info-box" style="margin-top:14px;">
-    <summary class="section-title" style="cursor:pointer;">k-means 관계 집단 개요</summary>
-    <div class="subtitle" style="margin-top:6px;">k-means는 주 분석이 아니라 관계 집단을 빠르게 훑어보기 위한 보조 요약입니다.</div>
+  <details class="info-box compact" style="margin-top:14px;">
+    <summary class="section-title" style="cursor:pointer;">관계 집단 간단 보기</summary>
     <div id="kmeansRows" class="student-grid" style="margin-top:10px;"></div>
   </details>
 
   <section class="caution-box">
-    <div class="section-title">해석 시 유의점</div>
-    <p id="cautionText">본 결과는 학생 관계의 원인을 단독으로 설명하거나 개별 학생을 평가·진단하지 않습니다. 반드시 교사의 관찰, 상담 내용, 학급 맥락과 함께 해석해야 합니다.</p>
+    <p id="cautionText">참고용 결과입니다. 학생을 평가·진단하지 않으며, 교사의 관찰과 함께 해석해 주세요.</p>
   </section>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     <a class="pill" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">회차 화면으로 돌아가기</a>
-    <a class="pill" href="/teacher/class/{{ code }}/analysis?sid={{ sid }}" style="text-decoration:none;">기존 분석 화면 보기</a>
   </div>
 </div>
 
 <style>
   .result-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 330px;
     gap: 14px;
   }
   .result-main,
@@ -95,6 +94,7 @@
     padding: 14px;
     box-sizing: border-box;
   }
+  .compact { padding: 12px; }
   .panel-head {
     display: flex;
     justify-content: space-between;
@@ -153,11 +153,20 @@
     font-weight: 950;
     color: #111827;
   }
+  .group-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 10px;
+  }
+  .group-list b {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 13px;
+  }
   .chip-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 8px;
     font-weight: 800;
   }
   .chip-soft {
@@ -169,9 +178,8 @@
   }
   .student-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 8px;
-    margin-top: 10px;
   }
   .student-card {
     border: 1px solid #eef2f7;
@@ -192,11 +200,15 @@
     font-weight: 900;
   }
   .caution-box {
-    margin-top: 14px;
-    background: #fff7ed;
-    border-color: #fed7aa;
-    color: #7c2d12;
+    margin-top: 12px;
+    background: #f4f6fa;
+    border-color: #e5e7eb;
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 9px 12px;
   }
+  .caution-box p { margin: 0; }
   @media(max-width: 900px) {
     .result-grid { grid-template-columns: 1fr; }
   }
@@ -238,25 +250,6 @@
     return palette[Math.abs(cid) % palette.length];
   }
 
-  function drawLabel(p, x, y){
-    const name = String(p.name || '');
-    ctx.save();
-    ctx.font = '12px system-ui';
-    ctx.textBaseline = 'middle';
-    const w = ctx.measureText(name).width + 14;
-    const h = 20;
-    const lx = Math.max(4, Math.min(canvas.width - w - 4, x - w / 2));
-    const ly = Math.max(24, Math.min(canvas.height - h - 4, y + 15));
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.strokeStyle = 'rgba(17,24,39,0.18)';
-    roundedRect(ctx, lx, ly, w, h, 8);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#111827';
-    ctx.fillText(name, lx + 7, ly + h / 2);
-    ctx.restore();
-  }
-
   function roundedRect(ctx, x, y, w, h, r){
     if (ctx.roundRect) {
       ctx.beginPath();
@@ -274,6 +267,25 @@
     ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
     ctx.lineTo(x, y + rr);
     ctx.quadraticCurveTo(x, y, x + rr, y);
+  }
+
+  function drawLabel(p, x, y){
+    const name = String(p.name || '');
+    ctx.save();
+    ctx.font = '12px system-ui';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(name).width + 14;
+    const h = 20;
+    const lx = Math.max(4, Math.min(canvas.width - w - 4, x - w / 2));
+    const ly = Math.max(24, Math.min(canvas.height - h - 4, y + 15));
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.strokeStyle = 'rgba(17,24,39,0.18)';
+    roundedRect(ctx, lx, ly, w, h, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#111827';
+    ctx.fillText(name, lx + 7, ly + h / 2);
+    ctx.restore();
   }
 
   function drawMap(students){
@@ -321,17 +333,8 @@
     }
   }
 
-  function renderStudents(students){
-    const box = document.getElementById('studentRows');
-    if (!box) return;
-    box.innerHTML = '';
-    for (const p of students || []) {
-      const card = document.createElement('div');
-      card.className = 'student-card';
-      card.innerHTML = `<b>${p.name || ''}</b><span class="subtitle">${p.status_label || ''}</span>`;
-      box.appendChild(card);
-    }
-    if (!box.children.length) box.textContent = '표시할 학생별 결과가 아직 없습니다.';
+  function groupedNames(students, status){
+    return (students || []).filter(p => p.status === status).map(p => p.name);
   }
 
   function renderKmeans(data){
@@ -339,7 +342,7 @@
     if (!box) return;
     box.innerHTML = '';
     if (!data || !data.enabled) {
-      box.textContent = 'k-means 보조 요약을 표시할 데이터가 아직 부족합니다.';
+      box.textContent = '표시할 요약이 아직 없습니다.';
       return;
     }
     for (const g of data.groups || []) {
@@ -356,17 +359,17 @@
       drawMap([]);
       return;
     }
+    const students = payload.students || [];
     text('nSubmitted', payload.n_submitted ?? '-');
     text('nStudents', payload.n_students ?? '-');
     text('nClusters', (payload.clusters || []).length);
     text('generatedAt', payload.generated_at ? payload.generated_at.replace('T', ' ').replace('Z', '') : '생성됨');
     text('summaryShort', (payload.summary || {}).short || '');
-    text('summaryStructure', (payload.summary || {}).structure || '');
-    text('cautionText', (payload.summary || {}).cautions || '');
-    chips('boundaryList', payload.boundaries || []);
-    chips('outlierList', payload.outliers || []);
-    drawMap(payload.students || []);
-    renderStudents(payload.students || []);
+    text('cautionText', '참고용 결과입니다. 학생을 평가·진단하지 않으며, 교사의 관찰과 함께 해석해 주세요.');
+    chips('coreList', groupedNames(students, 'core'));
+    chips('boundaryList', groupedNames(students, 'boundary'));
+    chips('outlierList', groupedNames(students, 'outlier'));
+    drawMap(students);
     renderKmeans(payload.kmeans_optional);
   }
 
