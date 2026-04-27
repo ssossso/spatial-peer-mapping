@@ -2634,13 +2634,7 @@ def teacher_analysis(code):
     if not cls or cls.get("_forbidden"):
         return "학급을 찾을 수 없거나 접근 권한이 없습니다.", 404
 
-    cls = ensure_class_schema(cls)
-    return render_template(
-        "teacher_analysis_dbscan.html",
-        cls=cls,
-        code=code,
-        sid=sid,
-    )
+    return redirect(f"/teacher/class/{code}/result/{sid}")
   
     # JSON fallback
     d = load_data()
