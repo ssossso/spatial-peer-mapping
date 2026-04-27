@@ -2897,6 +2897,15 @@ def teacher_session_result(code: str, sid: str):
             teacher_has = bool(r)
 
     state = db_get_session_state_v2(code, sid, session["teacher"])
+    spm_payload = None
+    spm_error = None
+    try:
+        spm_payload = build_spm_result_payload(code, sid)
+        cache_set(code, sid, f"spm_result_{sid}_v1", spm_payload)
+    except Exception as e:
+        app.logger.exception("SPM result payload failed for class=%s sid=%s", code, sid)
+        spm_error = str(e)
+
     return render_template(
         "session_result.html",
         cls=cls,
@@ -2906,6 +2915,8 @@ def teacher_session_result(code: str, sid: str):
         done=done,
         teacher_has=teacher_has,
         state=state,
+        spm_payload=spm_payload,
+        spm_error=spm_error,
     )
 
 @app.route("/teacher/class/<code>/result/<sid>/<url_name>")
