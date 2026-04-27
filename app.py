@@ -1427,6 +1427,7 @@ def cache_clear_session_analysis(class_code: str, sid: str) -> None:
               AND (
                 cache_key = :avg_key
                 OR cache_key = :dbscan_key
+                OR cache_key = :spm_key
                 OR cache_key LIKE :kmeans_prefix
                 OR cache_key LIKE :student_vs_prefix
               )
@@ -1435,6 +1436,7 @@ def cache_clear_session_analysis(class_code: str, sid: str) -> None:
             "s": sid,
             "avg_key": f"student_avg_{sid}",
             "dbscan_key": f"dbscan_structure_{sid}",
+            "spm_key": f"spm_result_{sid}_v1",
             "kmeans_prefix": f"kmeans_summary_{sid}_k%",
             "student_vs_prefix": f"student_vs_avg_{sid}_%",
         })
@@ -4018,6 +4020,469 @@ def _dbscan_2d(points, eps, min_samples):
 
     return labels, is_core
 
+
+def _is_finite_number(v: Any) -> bool:
+    """Return True for finite int/float values."""
+    return isinstance(v, (int, float)) and math.isfinite(float(v))
+
+
+def _percentile(values: List[float], q: float) -> Optional[float]:
+    """Small dependency-free percentile helper."""
+    vals = sorted(float(v) for v in values if _is_finite_number(v))
+    if not vals:
+        return None
+    if len(vals) == 1:
+        return vals[0]
+    q = max(0.0, min(1.0, float(q)))
+    pos = (len(vals) - 1) * q
+    lo = int(math.floor(pos))
+    hi = int(math.ceil(pos))
+    if lo == hi:
+        return vals[lo]
+    frac = pos - lo
+    return vals[lo] * (1.0 - frac) + vals[hi] * frac
+
+
+def _normalize_matrix_01(M: List[List[Optional[float]]]) -> List[List[Optional[float]]]:
+    """Normalize off-diagonal matrix values to 0..1 while preserving None."""
+    vals: List[float] = []
+    for i in range(len(M)):
+        for j in range(len(M)):
+            if i != j and _is_finite_number(M[i][j]):
+                vals.append(float(M[i][j]))
+
+    if not vals:
+        return [[0.0 if i == j else None for j in range(len(M))] for i in range(len(M))]
+
+    mn = min(vals)
+    mx = max(vals)
+    span = mx - mn
+    out: List[List[Optional[float]]] = []
+    for i in range(len(M)):
+        row: List[Optional[float]] = []
+        for j in range(len(M)):
+            if i == j:
+                row.append(0.0)
+            elif _is_finite_number(M[i][j]):
+                row.append(0.0 if span <= 1e-12 else round((float(M[i][j]) - mn) / span, 6))
+            else:
+                row.append(None)
+        out.append(row)
+    return out
+
+
+def _fill_symmetric_distance_matrix(M: List[List[Optional[float]]]) -> Tuple[List[List[float]], int, float]:
+    """Fill missing symmetric distances with the off-diagonal median."""
+    n = len(M)
+    vals = [float(M[i][j]) for i in range(n) for j in range(i + 1, n) if _is_finite_number(M[i][j])]
+    median = _percentile(vals, 0.5)
+    if median is None:
+        median = 1.0
+
+    missing_count = 0
+    out: List[List[float]] = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            v = M[i][j]
+            if not _is_finite_number(v):
+                v = median
+                missing_count += 1
+            vv = max(0.0, float(v))
+            out[i][j] = vv
+            out[j][i] = vv
+    return out, missing_count, float(median)
+
+
+def _normalize_points_01(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Scale 2D points to 0..1 for screen display."""
+    if not points:
+        return []
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    minx, maxx = min(xs), max(xs)
+    miny, maxy = min(ys), max(ys)
+    rx = (maxx - minx) if (maxx - minx) > 1e-12 else 1.0
+    ry = (maxy - miny) if (maxy - miny) > 1e-12 else 1.0
+    return [((x - minx) / rx, (y - miny) / ry) for x, y in points]
+
+
+def _placement_xy_normalized(v: Any, fallback_self_mode: str = "center") -> Optional[Tuple[float, float]]:
+    """Normalize one placement item using w/h when available."""
+    if not isinstance(v, dict):
+        return None
+    x = v.get("x")
+    y = v.get("y")
+    if not (_is_finite_number(x) and _is_finite_number(y)):
+        return None
+
+    w = v.get("w")
+    h = v.get("h")
+    if _is_finite_number(w) and float(w) > 0 and _is_finite_number(h) and float(h) > 0:
+        return (max(0.0, min(1.0, float(x) / float(w))), max(0.0, min(1.0, float(y) / float(h))))
+
+    # Older saved data has raw canvas coordinates without w/h. Keep it usable by
+    # normalizing later within the respondent's map.
+    return (float(x), float(y))
+
+
+def _respondent_points(names: List[str], respondent: str, placements: Dict[str, Any]) -> Tuple[List[Tuple[float, float]], List[bool]]:
+    """Build one respondent's full map, including self, with safe normalization."""
+    raw: List[Tuple[float, float]] = []
+    valid: List[bool] = []
+    used_explicit_canvas = False
+
+    for nm in names:
+        if nm == respondent:
+            raw.append((0.5, 0.5))
+            valid.append(True)
+            continue
+        p = _placement_xy_normalized((placements or {}).get(nm))
+        if p is None:
+            raw.append((0.0, 0.0))
+            valid.append(False)
+            continue
+        raw.append(p)
+        valid.append(True)
+        v = (placements or {}).get(nm)
+        if isinstance(v, dict) and _is_finite_number(v.get("w")) and _is_finite_number(v.get("h")):
+            used_explicit_canvas = True
+
+    if used_explicit_canvas:
+        return raw, valid
+
+    # Backward compatible path for legacy raw pixel coordinates. It matches the
+    # old app's self-at-origin idea, but returns a stable 0..1 map.
+    legacy_raw: List[Tuple[float, float]] = []
+    for idx, nm in enumerate(names):
+        legacy_raw.append((0.0, 0.0) if nm == respondent else raw[idx])
+
+    xs = [legacy_raw[i][0] for i in range(len(names)) if valid[i]]
+    ys = [legacy_raw[i][1] for i in range(len(names)) if valid[i]]
+    if len(xs) >= 2 and len(ys) >= 2:
+        minx, maxx = min(xs), max(xs)
+        miny, maxy = min(ys), max(ys)
+        rx = (maxx - minx) if (maxx - minx) > 1e-12 else 1.0
+        ry = (maxy - miny) if (maxy - miny) > 1e-12 else 1.0
+        return [((x - minx) / rx, (y - miny) / ry) for x, y in legacy_raw], valid
+    return raw, valid
+
+
+def _cosine_distance_pair(v1: List[Optional[float]], v2: List[Optional[float]], min_common: int = 2) -> Optional[float]:
+    """Compute 0..1 cosine distance on shared non-missing dimensions."""
+    a: List[float] = []
+    b: List[float] = []
+    for x, y in zip(v1, v2):
+        if _is_finite_number(x) and _is_finite_number(y):
+            a.append(float(x))
+            b.append(float(y))
+    if len(a) < min_common:
+        return None
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na <= 1e-12 or nb <= 1e-12:
+        return None
+    sim = sum(x * y for x, y in zip(a, b)) / (na * nb)
+    sim = max(-1.0, min(1.0, sim))
+    return round((1.0 - sim) / 2.0, 6)
+
+
+def build_spm_result_payload(class_code: str, sid: str, alpha: float = 0.6, beta: float = 0.4) -> Dict[str, Any]:
+    """Build the research-facing SPM result payload from student placement data."""
+    students = db_get_students_in_class(class_code)
+    names = [(s.get("name") or "").strip() for s in students if (s.get("name") or "").strip()]
+    n = len(names)
+    submitted = db_list_submitted_student_sessions(class_code, sid)
+    submitted = [s for s in submitted if (s.get("student_name") or "").strip() in names]
+    n_submitted = len(submitted)
+    generated_at = datetime.utcnow().isoformat() + "Z"
+
+    method = {
+        "main": "DBSCAN",
+        "embedding": "classical_MDS",
+        "distance_model": "direct_structural_mixed",
+        "alpha": float(alpha),
+        "beta": float(beta),
+        "missing_policy": "pairwise_then_median_imputation",
+        "kmeans_role": "optional_summary_only",
+    }
+
+    if n == 0:
+        return {
+            "ok": True,
+            "status": "no_students",
+            "class_code": class_code,
+            "session_id": sid,
+            "n_students": 0,
+            "n_submitted": 0,
+            "generated_at": generated_at,
+            "method": method,
+            "students": [],
+            "clusters": [],
+            "outliers": [],
+            "boundaries": [],
+            "distance_matrix": {"names": [], "values": []},
+            "diagnostics": {"missing_count": 0},
+            "summary": spm_result_summary(0, 0, 0, 0, []),
+            "kmeans_optional": {"enabled": False, "reason": "no_students"},
+        }
+
+    name_to_idx = {nm: i for i, nm in enumerate(names)}
+    respondent_maps: Dict[str, Dict[str, Any]] = {}
+    for item in submitted:
+        respondent = (item.get("student_name") or "").strip()
+        pts, valid = _respondent_points(names, respondent, item.get("placements") or {})
+        respondent_maps[respondent] = {"points": pts, "valid": valid}
+
+    map_mats: Dict[str, List[List[Optional[float]]]] = {}
+    for respondent, data in respondent_maps.items():
+        map_mats[respondent] = distance_matrix(data["points"], data["valid"])
+
+    direct_raw: List[List[Optional[float]]] = [[None] * n for _ in range(n)]
+    for i in range(n):
+        direct_raw[i][i] = 0.0
+        for j in range(i + 1, n):
+            vals: List[float] = []
+            mi = map_mats.get(names[i])
+            mj = map_mats.get(names[j])
+            if mi and _is_finite_number(mi[i][j]):
+                vals.append(float(mi[i][j]))
+            if mj and _is_finite_number(mj[j][i]):
+                vals.append(float(mj[j][i]))
+            if vals:
+                direct_raw[i][j] = direct_raw[j][i] = round(sum(vals) / len(vals), 6)
+
+    perception_vectors: List[List[Optional[float]]] = []
+    for i, nm in enumerate(names):
+        M = map_mats.get(nm)
+        if not M:
+            perception_vectors.append([None] * n)
+            continue
+        row: List[Optional[float]] = []
+        for k in range(n):
+            row.append(None if k == i else M[i][k])
+        perception_vectors.append(row)
+
+    vector_struct: List[List[Optional[float]]] = [[None] * n for _ in range(n)]
+    third_party_struct: List[List[Optional[float]]] = [[None] * n for _ in range(n)]
+    for i in range(n):
+        vector_struct[i][i] = 0.0
+        third_party_struct[i][i] = 0.0
+        for j in range(i + 1, n):
+            cd = _cosine_distance_pair(perception_vectors[i], perception_vectors[j])
+            vector_struct[i][j] = vector_struct[j][i] = cd
+
+            vals: List[float] = []
+            for respondent, M in map_mats.items():
+                # Prefer third-party maps, but allow all maps as a fallback when
+                # the class has few submissions.
+                if respondent in [names[i], names[j]] and n_submitted >= 3:
+                    continue
+                if _is_finite_number(M[i][j]):
+                    vals.append(float(M[i][j]))
+            if vals:
+                third_party_struct[i][j] = third_party_struct[j][i] = round(sum(vals) / len(vals), 6)
+
+    vector_norm = _normalize_matrix_01(vector_struct)
+    third_norm = _normalize_matrix_01(third_party_struct)
+    structural_raw: List[List[Optional[float]]] = [[None] * n for _ in range(n)]
+    for i in range(n):
+        structural_raw[i][i] = 0.0
+        for j in range(i + 1, n):
+            vals = [v for v in [vector_norm[i][j], third_norm[i][j]] if _is_finite_number(v)]
+            if vals:
+                structural_raw[i][j] = structural_raw[j][i] = round(sum(float(v) for v in vals) / len(vals), 6)
+
+    direct_norm = _normalize_matrix_01(direct_raw)
+    struct_norm = _normalize_matrix_01(structural_raw)
+
+    final_optional: List[List[Optional[float]]] = [[None] * n for _ in range(n)]
+    direct_present = struct_present = 0
+    for i in range(n):
+        final_optional[i][i] = 0.0
+        for j in range(i + 1, n):
+            d = direct_norm[i][j]
+            s = struct_norm[i][j]
+            if _is_finite_number(d):
+                direct_present += 1
+            if _is_finite_number(s):
+                struct_present += 1
+
+            if _is_finite_number(d) and _is_finite_number(s):
+                v = alpha * float(d) + beta * float(s)
+            elif _is_finite_number(d):
+                v = float(d)
+            elif _is_finite_number(s):
+                v = float(s)
+            else:
+                v = None
+            final_optional[i][j] = final_optional[j][i] = round(v, 6) if _is_finite_number(v) else None
+
+    final_D, missing_count, imputed_value = _fill_symmetric_distance_matrix(final_optional)
+    mds = classical_mds_2d(final_D)
+    display_pts = _normalize_points_01(mds)
+
+    labels = [-1] * n
+    is_core = [False] * n
+    dbscan_status = "not_run"
+    eps: Optional[float] = None
+    min_samples: Optional[int] = None
+
+    if n >= 3 and n_submitted >= 3 and len(display_pts) == n:
+        zpts, zstats = _standardize_2d(display_pts)
+        min_samples = max(2, min(3, n))
+        kd = _kth_neighbor_distances(zpts, max(1, min_samples - 1))
+        eps = _percentile(kd, 0.75)
+        if eps is None or not math.isfinite(eps) or eps <= 1e-12:
+            pair_ds = [math.hypot(zpts[i][0] - zpts[j][0], zpts[i][1] - zpts[j][1]) for i in range(n) for j in range(i + 1, n)]
+            eps = _percentile(pair_ds, 0.5) or 0.5
+        eps = max(float(eps), 1e-6)
+        labels, is_core = _dbscan_2d(zpts, eps, min_samples)
+        dbscan_status = "ok"
+    else:
+        zstats = {"mx": 0.0, "my": 0.0, "sx": 1.0, "sy": 1.0}
+
+    cluster_members: Dict[int, List[str]] = {}
+    outliers: List[str] = []
+    boundaries: List[str] = []
+    student_rows: List[Dict[str, Any]] = []
+    for i, nm in enumerate(names):
+        label = int(labels[i]) if i < len(labels) else -1
+        if dbscan_status != "ok":
+            status = "not_enough_data"
+            status_label = "자료 부족"
+        elif label == -1:
+            status = "outlier"
+            status_label = "비교적 떨어진 위치"
+            outliers.append(nm)
+        elif is_core[i]:
+            status = "core"
+            status_label = "밀집"
+            cluster_members.setdefault(label, []).append(nm)
+        else:
+            status = "boundary"
+            status_label = "경계"
+            boundaries.append(nm)
+            cluster_members.setdefault(label, []).append(nm)
+
+        x, y = display_pts[i] if i < len(display_pts) else (0.5, 0.5)
+        student_rows.append({
+            "name": nm,
+            "x": round(float(x), 6),
+            "y": round(float(y), 6),
+            "cluster_id": label,
+            "status": status,
+            "status_label": status_label,
+            "is_noise": dbscan_status == "ok" and label == -1,
+        })
+
+    clusters: List[Dict[str, Any]] = []
+    for cid in sorted(cluster_members):
+        members = sorted(cluster_members[cid])
+        idxs = [name_to_idx[m] for m in members if m in name_to_idx]
+        cx = sum(student_rows[i]["x"] for i in idxs) / len(idxs) if idxs else 0.0
+        cy = sum(student_rows[i]["y"] for i in idxs) / len(idxs) if idxs else 0.0
+        clusters.append({
+            "cluster_id": int(cid),
+            "size": len(members),
+            "members": members,
+            "center_x": round(cx, 6),
+            "center_y": round(cy, 6),
+            "density_summary": f"{len(members)}명의 학생이 비교적 가까운 관계 영역으로 묶였습니다.",
+        })
+
+    kmeans_optional = build_spm_kmeans_optional(names, display_pts)
+    summary = spm_result_summary(
+        n_students=n,
+        n_submitted=n_submitted,
+        cluster_count=len(clusters),
+        boundary_count=len(boundaries),
+        outlier_names=outliers,
+    )
+
+    return {
+        "ok": True,
+        "status": dbscan_status,
+        "class_code": class_code,
+        "session_id": sid,
+        "n_students": n,
+        "n_submitted": n_submitted,
+        "generated_at": generated_at,
+        "method": method,
+        "students": student_rows,
+        "clusters": clusters,
+        "outliers": outliers,
+        "boundaries": boundaries,
+        "distance_matrix": {
+            "names": names,
+            "values": [[round(float(v), 6) for v in row] for row in final_D],
+        },
+        "diagnostics": {
+            "missing_count": missing_count,
+            "imputed_value": round(imputed_value, 6),
+            "direct_pairs": direct_present,
+            "structural_pairs": struct_present,
+            "dbscan": {
+                "eps": round(float(eps), 6) if eps is not None else None,
+                "min_samples": min_samples,
+                "standardize": zstats,
+            },
+        },
+        "summary": summary,
+        "kmeans_optional": kmeans_optional,
+    }
+
+
+def build_spm_kmeans_optional(names: List[str], points: List[Tuple[float, float]]) -> Dict[str, Any]:
+    """Build optional k-means grouping for compact comparison only."""
+    n = len(points)
+    if n < 2:
+        return {"enabled": False, "reason": "not_enough_points"}
+    k = 2 if n < 6 else 3
+    k = max(2, min(4, min(k, n)))
+    labels, centers, inertia = kmeans_2d(points, k=k, n_init=10, max_iter=60, seed=42)
+    groups: List[Dict[str, Any]] = []
+    for cid in range(k):
+        members = [names[i] for i, lb in enumerate(labels) if int(lb) == cid]
+        cx, cy = centers[cid] if cid < len(centers) else (0.0, 0.0)
+        groups.append({
+            "group_no": cid + 1,
+            "size": len(members),
+            "members": sorted(members),
+            "center_x": round(float(cx), 6),
+            "center_y": round(float(cy), 6),
+        })
+    return {
+        "enabled": True,
+        "k": k,
+        "inertia": round(float(inertia), 6),
+        "groups": groups,
+        "points": [{"name": names[i], "x": round(points[i][0], 6), "y": round(points[i][1], 6), "group_no": int(labels[i]) + 1} for i in range(n)],
+    }
+
+
+def spm_result_summary(n_students: int, n_submitted: int, cluster_count: int, boundary_count: int, outlier_names: List[str]) -> Dict[str, str]:
+    """Create teacher-facing, non-diagnostic interpretation text."""
+    if n_students <= 0:
+        short = "아직 분석할 학생 명단이 없습니다."
+    elif n_submitted <= 0:
+        short = "아직 제출된 학생 배치 데이터가 없어 관계 구조를 생성하지 않았습니다."
+    elif n_submitted < 3:
+        short = "제출 학생 수가 적어 DBSCAN 구조 분석은 참고 수준으로만 표시됩니다."
+    else:
+        parts = [f"이번 회차에서는 학생 인식상 {cluster_count}개의 밀집된 관계 영역이 나타났습니다."]
+        if boundary_count > 0:
+            parts.append(f"{boundary_count}명의 학생은 여러 관계 영역 사이의 경계 위치에 가깝게 나타났습니다.")
+        if outlier_names:
+            parts.append(f"{len(outlier_names)}명의 학생은 전체 관계 지도에서 비교적 떨어진 위치에 배치되었습니다.")
+        short = " ".join(parts)
+
+    return {
+        "short": short,
+        "structure": "이 결과는 직접 거리와 제3자 배치 패턴을 함께 반영한 학급 전체 관계 구조 요약입니다.",
+        "cautions": "본 결과는 학생 관계의 원인을 단독으로 설명하거나 개별 학생을 평가·진단하지 않습니다. 반드시 교사의 관찰, 상담 내용, 학급 맥락과 함께 해석해야 합니다.",
+    }
+
+
 def dbscan_teacher_summary(
     n_total: int,
     dense_count: int,
@@ -4573,6 +5038,34 @@ def analysis_kmeans_summary(code, sid):
     payload = kmeans_summary_payload(code, sid, k)
     cache_set(code, sid, cache_key, payload)
     return jsonify(payload)
+
+
+@app.route("/analysis/class/<code>/<sid>/spm_result.json")
+def analysis_spm_result(code, sid):
+    if "teacher" not in session:
+        return redirect("/teacher/login")
+
+    code = (code or "").upper().strip()
+    sid = (sid or "1").strip()
+    if sid not in ["1", "2", "3", "4", "5"]:
+        sid = "1"
+
+    cls = db_get_class_for_teacher(code, session["teacher"])
+    if not cls or cls.get("_forbidden"):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    refresh = (request.args.get("refresh") or "").strip().lower() in ["1", "true", "yes"]
+    cache_key = f"spm_result_{sid}_v1"
+    if refresh:
+        cache_clear_session_analysis(code, sid)
+    cached = None if refresh else cache_get(code, sid, cache_key)
+    if cached:
+        return jsonify(cached)
+
+    payload = build_spm_result_payload(code, sid)
+    cache_set(code, sid, cache_key, payload)
+    return jsonify(payload)
+
 
 @app.route("/analysis/class/<code>/<sid>/dbscan_structure.json")
 def analysis_dbscan_structure(code, sid):
