@@ -21,9 +21,9 @@
       <canvas id="spmCanvas" width="760" height="520" class="map"></canvas>
 
       <div class="legend">
-        <span><b class="dot core"></b>가까운 관계 영역</span>
-        <span><b class="dot boundary"></b>사이 위치</span>
-        <span><b class="dot outlier"></b>떨어진 위치</span>
+        <span class="term-tip" data-tip="가까운 흐름 안에 함께 놓인 학생"><b class="dot core"></b>밀집</span>
+        <span class="term-tip" data-tip="여러 흐름 사이에 놓인 학생"><b class="dot boundary"></b>연결</span>
+        <span class="term-tip" data-tip="전체 흐름에서 비교적 떨어져 놓인 학생"><b class="dot outlier"></b>분리</span>
       </div>
     </section>
 
@@ -45,18 +45,18 @@
       </div>
 
       <div class="info-box compact">
-        <div class="section-title">명단 요약</div>
+        <div class="section-title">관계 지도 속 위치</div>
         <div class="group-list">
           <div>
-            <b>가까운 관계 영역</b>
+            <b class="term-tip" data-tip="가까운 흐름 안에 함께 놓인 학생">밀집</b>
             <div id="coreList" class="chip-list">-</div>
           </div>
           <div>
-            <b>사이 위치</b>
+            <b class="term-tip" data-tip="여러 흐름 사이에 놓인 학생">연결</b>
             <div id="boundaryList" class="chip-list">-</div>
           </div>
           <div>
-            <b>떨어진 위치</b>
+            <b class="term-tip" data-tip="전체 흐름에서 비교적 떨어져 놓인 학생">분리</b>
             <div id="outlierList" class="chip-list">-</div>
           </div>
         </div>
@@ -74,7 +74,7 @@
   </section>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-    <a class="pill" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1" style="text-decoration:none;">회차 화면으로 돌아가기</a>
+    <a class="pill primary" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
   </div>
 </div>
 
@@ -118,6 +118,38 @@
     color: #374151;
     font-weight: 800;
     font-size: 13px;
+  }
+  .term-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    cursor: help;
+  }
+  .term-tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    width: max-content;
+    max-width: 220px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    background: #111827;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(4px);
+    transition: opacity 120ms ease, transform 120ms ease;
+    z-index: 5;
+  }
+  .term-tip:hover::after,
+  .term-tip:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
   }
   .dot {
     display: inline-block;
@@ -188,6 +220,31 @@
     background: #fff;
   }
   .student-card b { display:block; margin-bottom:3px; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #111827;
+    font-weight: 900;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: none;
+    box-sizing: border-box;
+  }
+  .pill.primary {
+    background: #4a6cf7;
+    border-color: #4a6cf7;
+    color: #fff;
+  }
+  .pill.primary:hover {
+    background: #3955c6;
+    border-color: #3955c6;
+  }
   .status {
     display: inline-flex;
     align-items: center;
@@ -250,6 +307,13 @@
     return palette[Math.abs(cid) % palette.length];
   }
 
+  function canvasPoint(p){
+    return {
+      x: 40 + (Number(p.x) || 0.5) * (canvas.width - 80),
+      y: 40 + (Number(p.y) || 0.5) * (canvas.height - 80)
+    };
+  }
+
   function roundedRect(ctx, x, y, w, h, r){
     if (ctx.roundRect) {
       ctx.beginPath();
@@ -307,9 +371,12 @@
       return;
     }
 
+    drawDenseFog(students);
+
     for (const p of students) {
-      const x = 40 + (Number(p.x) || 0.5) * (canvas.width - 80);
-      const y = 40 + (Number(p.y) || 0.5) * (canvas.height - 80);
+      const pt = canvasPoint(p);
+      const x = pt.x;
+      const y = pt.y;
       ctx.save();
       ctx.lineWidth = 2;
       if (p.status === 'core') {
@@ -333,8 +400,50 @@
     }
   }
 
+  function drawDenseFog(students){
+    const dense = (students || []).filter(p => p.status === 'core');
+    if (dense.length === 0) return;
+
+    ctx.save();
+    for (const p of dense) {
+      const pt = canvasPoint(p);
+      const color = clusterColor(p.cluster_id);
+      const g = ctx.createRadialGradient(pt.x, pt.y, 8, pt.x, pt.y, 92);
+      g.addColorStop(0, hexToRgba(color, 0.22));
+      g.addColorStop(0.45, hexToRgba(color, 0.12));
+      g.addColorStop(1, hexToRgba(color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 92, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function hexToRgba(hex, alpha){
+    const raw = String(hex || '#111827').replace('#', '');
+    const full = raw.length === 3 ? raw.split('').map(c => c + c).join('') : raw;
+    const n = parseInt(full, 16);
+    if (!Number.isFinite(n)) return `rgba(17,24,39,${alpha})`;
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
   function groupedNames(students, status){
     return (students || []).filter(p => p.status === status).map(p => p.name);
+  }
+
+  function friendlySummary(payload){
+    const students = payload.students || [];
+    const linked = groupedNames(students, 'boundary').length;
+    const separated = groupedNames(students, 'outlier').length;
+    const clusters = (payload.clusters || []).length;
+    const parts = [`${clusters}개 흐름`];
+    if (linked > 0) parts.push(`연결 ${linked}명`);
+    if (separated > 0) parts.push(`분리 ${separated}명`);
+    return parts.join(' · ');
   }
 
   function renderKmeans(data){
@@ -364,7 +473,7 @@
     text('nStudents', payload.n_students ?? '-');
     text('nClusters', (payload.clusters || []).length);
     text('generatedAt', payload.generated_at ? payload.generated_at.replace('T', ' ').replace('Z', '') : '생성됨');
-    text('summaryShort', (payload.summary || {}).short || '');
+    text('summaryShort', friendlySummary(payload));
     text('cautionText', '참고용 결과입니다. 학생을 평가·진단하지 않으며, 교사의 관찰과 함께 해석해 주세요.');
     chips('coreList', groupedNames(students, 'core'));
     chips('boundaryList', groupedNames(students, 'boundary'));
