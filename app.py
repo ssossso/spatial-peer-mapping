@@ -871,8 +871,39 @@ def db_get_session_state_v2(class_code: str, sid: str, teacher_username: str) ->
         "survey_submitted": bool(getattr(fin, "survey_submitted", False)) or bool(survey_row),
         "finalized": bool(getattr(fin, "finalized", False)),
         "exclusions": exclusions,
+        "survey": db_get_survey_v2(class_code, sid),
     }
     return state
+
+
+def db_get_survey_v2(class_code: str, sid: str) -> Optional[Dict[str, Any]]:
+    if not engine:
+        return None
+
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT q1_help, q2_new, q2_detail, q3_use, q4_cmp, q4_detail,
+                   q5_conf, q6_next, q7_feedback, submitted_at
+            FROM teacher_surveys
+            WHERE class_code = :code AND session_id = :sid
+            LIMIT 1
+        """), {"code": class_code, "sid": sid}).fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "q1_help": row.q1_help,
+        "q2_new": row.q2_new,
+        "q2_detail": row.q2_detail or "",
+        "q3_use": row.q3_use,
+        "q4_cmp": row.q4_cmp,
+        "q4_detail": row.q4_detail or "",
+        "q5_conf": row.q5_conf,
+        "q6_next": row.q6_next,
+        "q7_feedback": row.q7_feedback or "",
+        "submitted_at": row.submitted_at.isoformat() if row.submitted_at else None,
+    }
 
 
 def db_set_preview_seen_v2(class_code: str, sid: str, teacher_username: str) -> None:
@@ -1180,6 +1211,9 @@ def db_upsert_student_session(class_code: str, student_name: str, sid: str, plac
                     "submitted": submitted
                 })
 
+    if submitted:
+        cache_clear_session_analysis(class_code, sid)
+
 
       
 def db_create_teacher_run(class_code: str, teacher_username: str, sid: str, condition: str, tool_run_id: Optional[int] = None) -> int:
@@ -1380,6 +1414,30 @@ def cache_set(class_code: str, sid: str, key: str, payload: Dict[str, Any]) -> N
             ON CONFLICT (class_code, session_id, cache_key)
             DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
         """), {"c": class_code, "s": sid, "k": key, "p": payload_str})
+
+
+def cache_clear_session_analysis(class_code: str, sid: str) -> None:
+    if not engine:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("""
+            DELETE FROM analysis_cache
+            WHERE class_code = :c
+              AND session_id = :s
+              AND (
+                cache_key = :avg_key
+                OR cache_key = :dbscan_key
+                OR cache_key LIKE :kmeans_prefix
+                OR cache_key LIKE :student_vs_prefix
+              )
+        """), {
+            "c": class_code,
+            "s": sid,
+            "avg_key": f"student_avg_{sid}",
+            "dbscan_key": f"dbscan_structure_{sid}",
+            "kmeans_prefix": f"kmeans_summary_{sid}_k%",
+            "student_vs_prefix": f"student_vs_avg_{sid}_%",
+        })
 
 
 
@@ -2746,6 +2804,28 @@ def api_v2_survey(code: str, sid: str):
     payload = request.get_json(silent=True) or {}
     db_upsert_survey_v2(code, sid, t, payload)
     return jsonify({"ok": True, "survey_submitted": True})
+
+
+@app.route("/api/v2/class/<code>/session/<sid>/survey", methods=["GET"])
+def api_v2_get_survey(code: str, sid: str):
+    t = _require_teacher()
+    if not t:
+        return jsonify({"ok": False, "error": "UNAUTHORIZED"}), 401
+    code = (code or "").upper().strip()
+    sid = (sid or "").strip()
+    if sid not in ["1", "2", "3", "4"]:
+        sid = "1"
+
+    cls = _require_class_access(code, t)
+    if not cls:
+        return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+
+    survey = db_get_survey_v2(code, sid)
+    return jsonify({
+        "ok": True,
+        "survey_submitted": bool(survey),
+        "survey": survey,
+    })
 
 
 @app.route("/api/v2/class/<code>/session/<sid>/finalize", methods=["POST"])
@@ -4506,8 +4586,12 @@ def analysis_dbscan_structure(code, sid):
     if not cls or cls.get("_forbidden"):
         return jsonify({"error": "forbidden"}), 403
 
+    refresh = (request.args.get("refresh") or "").strip().lower() in ["1", "true", "yes"]
+    if refresh:
+        cache_clear_session_analysis(code, sid)
+
     cache_key = f"dbscan_structure_{sid}"
-    cached = cache_get(code, sid, cache_key)
+    cached = None if refresh else cache_get(code, sid, cache_key)
     if cached:
         return jsonify(cached)
 
