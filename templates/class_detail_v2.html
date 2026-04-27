@@ -66,6 +66,12 @@
     color: #fff;
   }
 
+  #btnExclude.active {
+    background: #4a6cf7;
+    border-color: #4a6cf7;
+    color: #fff;
+  }
+
   .pill.danger { border-color: #fecaca; color: #991b1b; }
   .pill:disabled,
   .pill.is-disabled {
@@ -441,15 +447,16 @@
               <textarea id="q7_feedback" rows="3" placeholder="자유롭게 작성" style="margin-top:8px;"></textarea>
             </div>
 
-            <div class="btn-row">
-              <button type="button" class="pill primary" id="btnSurveySubmit">설문 완료</button>
-              <span class="small" id="surveyHint">완료 후 결과 보기를 누르면 회차 결과가 저장됩니다.</span>
-            </div>
           </div>
 
           <div class="mini-card" id="surveyDoneBox" style="display:none; margin-top:12px; background:#f8fafc;">
-            <div style="font-weight:950;">설문이 완료되었습니다.</div>
-            <div class="small" style="margin-top:6px;">수정이 필요하면 아래의 설문 수정을 눌러 주세요.</div>
+            <div style="font-weight:950;">설문 완료</div>
+            <div class="small" style="margin-top:6px;">수정이 필요하면 아래 버튼을 눌러 주세요.</div>
+          </div>
+
+          <div class="btn-row" style="margin-top:12px;">
+            <button type="button" class="pill primary" id="btnSurveySubmit">설문 완료</button>
+            <span class="small" id="surveyHint">완료 후 결과 보기를 누르면 회차 결과가 저장됩니다.</span>
           </div>
 
           <div class="btn-row" style="margin-top:12px;">
@@ -607,7 +614,7 @@
       }
       if (finalizeTopHint){
         finalizeTopHint.textContent = surveySubmitted
-          ? '설문이 완료되었습니다. 결과 보기를 누르면 회차 결과가 저장됩니다.'
+          ? '결과 보기를 누르면 회차 결과가 저장됩니다.'
           : '결과를 보려면 교사 설문을 먼저 완료해 주세요.';
       }
       setSurveyCollapsed(!!surveySubmitted);
@@ -644,7 +651,11 @@
       if (!btn || !box) return;
       const show = (box.style.display === 'none' || box.style.display === '');
       box.style.display = show ? 'block' : 'none';
-      setActive(btn, show);
+      if (btn === btnExclude && exclusionResolved) {
+        setActive(btn, true);
+      } else {
+        setActive(btn, show);
+      }
     }
 
     function allReasonsFilled(){
@@ -681,6 +692,14 @@
           ${rows || '<div class="small">저장된 항목이 없습니다.</div>'}
         </div>
         <div class="small" style="margin-top:10px;">저장되었습니다.</div>
+      `;
+    }
+
+    function renderExclusionConfirmed(){
+      if (!boxExclude) return;
+      boxExclude.innerHTML = `
+        <div style="font-weight:950;">참여 제외 학생 확인</div>
+        <div class="note" style="margin-top:10px;">확인 완료</div>
       `;
     }
 
@@ -731,6 +750,11 @@
         if (exclusionResolved && savedExcluded.length > 0){
           if (excludeReasons) excludeReasons.style.display = 'none';
           renderExcludedSummary(savedExcluded);
+          setActive(btnExclude, true);
+        } else if (exclusionResolved) {
+          if (excludeReasons) excludeReasons.style.display = 'none';
+          renderExclusionConfirmed();
+          setActive(btnExclude, true);
         }
 
         if (finalized){
@@ -748,9 +772,9 @@
         await apiPost('exclusions', { mode: 'no_exclude' });
         exclusionResolved = true;
         updateGates();
-        if (boxExclude) boxExclude.style.display = 'none';
-        setActive(btnExclude, false);
-        alert('확인되었습니다.');
+        renderExclusionConfirmed();
+        if (boxExclude) boxExclude.style.display = 'block';
+        setActive(btnExclude, true);
       }catch(e){
         alert('저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
       }
@@ -763,7 +787,9 @@
           exclusionResolved = true;
           if (excludeReasons) excludeReasons.style.display = 'none';
           updateGates();
-          window.openGateModal('확인되었습니다. 학생 참여 후 다시 회차를 마무리해 주세요.');
+          renderExclusionConfirmed();
+          if (boxExclude) boxExclude.style.display = 'block';
+          setActive(btnExclude, true);
         }catch(e){
           alert('저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
         }
@@ -775,12 +801,13 @@
         if (excludeReasons) excludeReasons.style.display = 'block';
         exclusionResolved = false;
         updateGates();
+        setActive(btnExclude, false);
       });
     }
 
     if (excludeReasons) {
       excludeReasons.addEventListener('input', () => {
-        exclusionResolved = allReasonsFilled();
+        exclusionResolved = false;
         updateGates();
       });
     }
@@ -854,6 +881,7 @@
     if (resultLink) {
       resultLink.addEventListener('click', async (event) => {
         event.preventDefault();
+        if (!exclusionResolved) return window.openGateModal('참여 제외 학생 확인을 먼저 완료해 주세요.');
         if (!surveySubmitted) return window.openGateModal('교사 설문을 먼저 완료해 주세요.');
         try{
           const res = await apiPost('finalize', {});
@@ -867,7 +895,13 @@
           window.location.href = resultUrl;
         }catch(e){
           if (String(e.message) === 'NOT_READY'){
-            window.openGateModal('참여 제외 학생 확인과 교사 설문을 먼저 완료해 주세요.');
+            if (!exclusionResolved) {
+              window.openGateModal('참여 제외 학생 확인을 먼저 완료해 주세요.');
+            } else if (!surveySubmitted) {
+              window.openGateModal('교사 설문을 먼저 완료해 주세요.');
+            } else {
+              window.openGateModal('완료 상태를 다시 확인해 주세요.');
+            }
           } else {
             alert('결과 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
           }
