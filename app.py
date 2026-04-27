@@ -1025,12 +1025,13 @@ def db_upsert_survey_v2(class_code: str, sid: str, teacher_username: str, payloa
 
 
 def db_finalize_session_v2(class_code: str, sid: str, teacher_username: str) -> Dict[str, Any]:
+    """Mark a session complete once exclusion review and teacher survey are saved."""
     if not engine:
         raise RuntimeError("DB engine not initialized")
 
     with engine.begin() as conn:
         fin = conn.execute(text("""
-            SELECT preview_seen, exclusions_resolved, survey_submitted, finalized
+            SELECT exclusions_resolved, survey_submitted, finalized
             FROM session_finalizations
             WHERE class_code = :code AND session_id = :sid
         """), {"code": class_code, "sid": sid}).fetchone()
@@ -1038,17 +1039,15 @@ def db_finalize_session_v2(class_code: str, sid: str, teacher_username: str) -> 
         if not fin:
             raise ValueError("Finalize state not found")
 
-        preview_seen = bool(fin.preview_seen)
         exclusions_resolved = bool(fin.exclusions_resolved)
         survey_submitted = bool(fin.survey_submitted) or bool(conn.execute(text("""
             SELECT 1 FROM teacher_surveys WHERE class_code=:code AND session_id=:sid
         """), {"code": class_code, "sid": sid}).fetchone())
 
-        if not (preview_seen and exclusions_resolved and survey_submitted):
+        if not (exclusions_resolved and survey_submitted):
             return {
                 "ok": False,
                 "error": "NOT_READY",
-                "preview_seen": preview_seen,
                 "exclusions_resolved": exclusions_resolved,
                 "survey_submitted": survey_submitted,
             }
@@ -1057,6 +1056,8 @@ def db_finalize_session_v2(class_code: str, sid: str, teacher_username: str) -> 
             UPDATE session_finalizations
             SET finalized = TRUE,
                 finalized_at = NOW(),
+                preview_seen = TRUE,
+                preview_seen_at = COALESCE(preview_seen_at, NOW()),
                 teacher_username = :t,
                 updated_at = NOW()
             WHERE class_code = :code AND session_id = :sid
