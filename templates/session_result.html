@@ -407,17 +407,43 @@
   }
   .radio-group {
     margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
   }
   .radio-group:first-child {
     margin-top: 0;
   }
+  .radio-group .question-title,
+  .radio-group textarea,
+  .radio-group .subtitle {
+    flex-basis: 100%;
+  }
   .radio-group label {
     display: inline-flex;
+    flex: 0 1 auto;
     align-items: center;
-    gap: 5px;
-    margin: 4px 12px 4px 0;
+    gap: 7px;
+    min-width: 86px;
+    max-width: 220px;
+    min-height: 34px;
+    margin: 0;
+    padding: 7px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
     font-weight: 800;
     font-size: 14px;
+    line-height: 1.25;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    box-sizing: border-box;
+  }
+  .radio-group label input {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
   }
   .question-title {
     font-weight: 900;

@@ -181,8 +181,38 @@
   .field-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
   .reason-input { flex: 1; min-width: 220px; }
   .small { font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5; }
-  .radio-group label { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; margin: 4px 12px 4px 0; }
-  .radio-group input { width: auto; }
+  .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+  }
+  .radio-group > div,
+  .radio-group textarea,
+  .radio-group .small {
+    flex-basis: 100%;
+  }
+  .radio-group label {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 86px;
+    max-width: 220px;
+    min-height: 34px;
+    margin: 0;
+    padding: 7px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1.25;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    box-sizing: border-box;
+  }
+  .radio-group input { flex: 0 0 auto; width: auto; margin: 0; }
 
   .modal-backdrop {
     position: fixed;
