@@ -1011,6 +1011,9 @@ def db_get_session_state_v2(class_code: str, sid: str, teacher_username: str) ->
         "exclusions": exclusions,
         "survey": db_get_survey_v2(class_code, sid),
     }
+    submitted_map = db_get_submitted_map(class_code, sid)
+    for item in state["exclusions"]:
+        item["submitted"] = bool(submitted_map.get(item["student_name"], False))
     return state
 
 
@@ -1097,6 +1100,44 @@ def db_set_exclusions_v2(class_code: str, sid: str, teacher_username: str, mode:
                           teacher_username = EXCLUDED.teacher_username,
                           updated_at = NOW()
         """), {"code": class_code, "sid": sid, "t": teacher_username})
+
+
+def db_remove_session_exclusion_v2(class_code: str, sid: str, teacher_username: str, student_name: str) -> None:
+    """Remove one student from the session exclusion list."""
+    if not engine:
+        raise RuntimeError("DB engine not initialized")
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            DELETE FROM session_exclusions
+            WHERE class_code = :code
+              AND session_id = :sid
+              AND student_name = :name
+        """), {"code": class_code, "sid": sid, "name": student_name})
+        conn.execute(text("""
+            INSERT INTO session_finalizations (class_code, session_id, teacher_username, exclusions_resolved, exclusions_resolved_at)
+            VALUES (:code, :sid, :t, TRUE, NOW())
+            ON CONFLICT (class_code, session_id)
+            DO UPDATE SET exclusions_resolved = TRUE,
+                          exclusions_resolved_at = NOW(),
+                          teacher_username = EXCLUDED.teacher_username,
+                          updated_at = NOW()
+        """), {"code": class_code, "sid": sid, "t": teacher_username})
+
+
+def db_get_excluded_student_names(class_code: str, sid: str) -> set:
+    """Return students intentionally excluded from a session."""
+    if not engine:
+        return set()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT student_name
+            FROM session_exclusions
+            WHERE class_code = :code
+              AND session_id = :sid
+              AND excluded = TRUE
+        """), {"code": class_code, "sid": sid}).fetchall()
+    return {(r.student_name or "").strip() for r in rows if (r.student_name or "").strip()}
 
 
 def db_upsert_survey_v2(class_code: str, sid: str, teacher_username: str, payload: Dict[str, Any]) -> None:
@@ -3083,7 +3124,32 @@ def api_v2_exclusions(code: str, sid: str):
         items = norm_items
 
     db_set_exclusions_v2(code, sid, t, mode, items)
+    cache_clear_session_analysis(code, sid)
     return jsonify({"ok": True, "exclusions_resolved": True})
+
+
+@app.route("/api/v2/class/<code>/session/<sid>/exclusions/remove", methods=["POST"])
+def api_v2_remove_exclusion(code: str, sid: str):
+    t = _require_teacher()
+    if not t:
+        return jsonify({"ok": False, "error": "UNAUTHORIZED"}), 401
+    code = (code or "").upper().strip()
+    sid = (sid or "").strip()
+    if sid not in ["1", "2", "3", "4"]:
+        sid = "1"
+
+    cls = _require_class_access(code, t)
+    if not cls:
+        return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    student_name = (payload.get("student_name") or "").strip()
+    if not student_name:
+        return jsonify({"ok": False, "error": "BAD_REQUEST"}), 400
+
+    db_remove_session_exclusion_v2(code, sid, t, student_name)
+    cache_clear_session_analysis(code, sid)
+    return jsonify({"ok": True, "removed": student_name})
 
 
 @app.route("/api/v2/class/<code>/session/<sid>/survey", methods=["POST"])
@@ -4514,7 +4580,12 @@ def _cosine_distance_pair(v1: List[Optional[float]], v2: List[Optional[float]], 
 def build_spm_result_payload(class_code: str, sid: str, alpha: float = 0.6, beta: float = 0.4) -> Dict[str, Any]:
     """Build the research-facing SPM result payload from student placement data."""
     students = db_get_students_in_class(class_code)
-    names = [(s.get("name") or "").strip() for s in students if (s.get("name") or "").strip()]
+    excluded_names = db_get_excluded_student_names(class_code, sid)
+    names = [
+        (s.get("name") or "").strip()
+        for s in students
+        if (s.get("name") or "").strip() and (s.get("name") or "").strip() not in excluded_names
+    ]
     n = len(names)
     submitted = db_list_submitted_student_sessions(class_code, sid)
     submitted = [s for s in submitted if (s.get("student_name") or "").strip() in names]
