@@ -292,6 +292,27 @@ def init_db() -> None:
             "ALTER TABLE students ADD COLUMN IF NOT EXISTS joined_at TIMESTAMP DEFAULT NOW();",
         ]))
 
+        # -------------------
+        # Migration v5: archived reset snapshots
+        # -------------------
+        migrations.append((5, [
+            """
+            CREATE TABLE IF NOT EXISTS archived_session_resets (
+                id SERIAL PRIMARY KEY,
+                class_code TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                reset_by TEXT NOT NULL,
+                reset_reason TEXT,
+                archived_payload JSONB,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_archived_session_resets_class_session
+            ON archived_session_resets (class_code, session_id);
+            """,
+        ]))
+
 
 
         migrations.sort(key=lambda x: int(x[0]))
@@ -402,13 +423,7 @@ def _autosize_columns(ws):
         ws.column_dimensions[col_letter].width = min(max_len + 2, 60)
 
 def db_fetch_class_overview() -> List[Dict[str, Any]]:
-    """
-    연구/관리 페이지에서 '지금 바로 연결 가능한' 요약 데이터:
-    - classes 목록
-    - 학생 수
-    - student_sessions: sid별 제출/전체
-    - teacher_placement_runs: session_id별 제출/전체
-    """
+    """Return class/session progress data for the research admin dashboard."""
     if not engine:
         return []
 
@@ -422,28 +437,64 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         for c in classes:
             student_cnt = conn.execute(text("""
-                SELECT COUNT(*) AS n FROM students WHERE class_code = :code
+                SELECT COUNT(*) AS n FROM students
+                WHERE class_code = :code AND COALESCE(active, TRUE) = TRUE
             """), {"code": c.code}).fetchone().n
 
-            ss_rows = conn.execute(text("""
-                SELECT sid,
-                       COUNT(*) AS total,
-                       SUM(CASE WHEN submitted THEN 1 ELSE 0 END) AS submitted
-                FROM student_sessions
-                WHERE class_code = :code
-                GROUP BY sid
-                ORDER BY sid::int
-            """), {"code": c.code}).fetchall()
+            sessions: List[Dict[str, Any]] = []
+            for sid in VISIBLE_SESSION_IDS:
+                ss = conn.execute(text("""
+                    SELECT COUNT(*) AS total,
+                           SUM(CASE WHEN submitted THEN 1 ELSE 0 END) AS submitted
+                    FROM student_sessions
+                    WHERE class_code = :code AND sid = :sid
+                """), {"code": c.code, "sid": sid}).fetchone()
 
-            tr_rows = conn.execute(text("""
-                SELECT session_id,
-                       COUNT(*) AS total,
-                       SUM(CASE WHEN submitted THEN 1 ELSE 0 END) AS submitted
-                FROM teacher_placement_runs
-                WHERE class_code = :code
-                GROUP BY session_id
-                ORDER BY session_id::int
-            """), {"code": c.code}).fetchall()
+                tr = conn.execute(text("""
+                    SELECT COUNT(*) AS total,
+                           SUM(CASE WHEN submitted THEN 1 ELSE 0 END) AS submitted
+                    FROM teacher_placement_runs
+                    WHERE class_code = :code AND session_id = :sid
+                """), {"code": c.code, "sid": sid}).fetchone()
+
+                survey = conn.execute(text("""
+                    SELECT submitted_at
+                    FROM teacher_surveys
+                    WHERE class_code = :code AND session_id = :sid
+                    LIMIT 1
+                """), {"code": c.code, "sid": sid}).fetchone()
+
+                fin = conn.execute(text("""
+                    SELECT exclusions_resolved, survey_submitted, finalized
+                    FROM session_finalizations
+                    WHERE class_code = :code AND session_id = :sid
+                    LIMIT 1
+                """), {"code": c.code, "sid": sid}).fetchone()
+
+                reset_row = conn.execute(text("""
+                    SELECT COUNT(*) AS n
+                    FROM archived_session_resets
+                    WHERE class_code = :code AND session_id = :sid
+                """), {"code": c.code, "sid": sid}).fetchone()
+
+                submitted = int((ss.submitted if ss and ss.submitted is not None else 0) or 0)
+                teacher_submitted = int((tr.submitted if tr and tr.submitted is not None else 0) or 0)
+                similarity = teacher_student_similarity_summary(str(c.code), sid)
+                sessions.append({
+                    "sid": sid,
+                    "label": f"{int(sid) - 1}회차",
+                    "student_total": int(student_cnt or 0),
+                    "student_submitted": submitted,
+                    "student_progress_pct": round((submitted / int(student_cnt or 1)) * 100),
+                    "teacher_placement_done": teacher_submitted > 0,
+                    "teacher_placement_count": teacher_submitted,
+                    "pre_survey_done": teacher_submitted > 0,
+                    "post_survey_done": bool(survey),
+                    "exclusions_resolved": bool(getattr(fin, "exclusions_resolved", False)) if fin else False,
+                    "finalized": bool(getattr(fin, "finalized", False)) if fin else False,
+                    "reset_count": int(reset_row.n or 0) if reset_row else 0,
+                    "similarity": similarity,
+                })
 
             out.append({
                 "code": c.code,
@@ -451,16 +502,71 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                 "teacher_username": c.teacher_username,
                 "created_at": c.created_at,
                 "student_count": int(student_cnt or 0),
-                "student_sessions": [
-                    {"sid": r.sid, "total": int(r.total or 0), "submitted": int(r.submitted or 0)}
-                    for r in ss_rows
-                ],
-                "teacher_runs": [
-                    {"session_id": r.session_id, "total": int(r.total or 0), "submitted": int(r.submitted or 0)}
-                    for r in tr_rows
-                ],
+                "sessions": sessions,
             })
         return out
+
+
+def teacher_student_similarity_summary(class_code: str, sid: str) -> Dict[str, Any]:
+    """Compare the latest teacher map with the student aggregate map for a session."""
+    try:
+        students = db_get_students_in_class(class_code)
+        names = [(s.get("name") or "").strip() for s in students if (s.get("name") or "").strip()]
+        if len(names) < 3:
+            return {"ok": False, "label": "표본 부족", "score": None, "n_pairs": 0}
+
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT placements
+                FROM teacher_placement_runs
+                WHERE class_code = :code AND session_id = :sid AND submitted = TRUE
+                ORDER BY ended_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+            """), {"code": class_code, "sid": sid}).fetchone()
+        if not row:
+            return {"ok": False, "label": "교사 배치 없음", "score": None, "n_pairs": 0}
+
+        teacher_placements = row.placements if isinstance(row.placements, dict) else _json_load_maybe(row.placements)
+        if not isinstance(teacher_placements, dict):
+            return {"ok": False, "label": "교사 배치 없음", "score": None, "n_pairs": 0}
+
+        teacher_pts, teacher_valid = points_from_placements_all_students(teacher_placements, names)
+        teacher_d = distance_matrix(teacher_pts, teacher_valid)
+
+        avg_payload = student_avg_distance_payload(class_code, sid)
+        avg_d = avg_payload.get("avg_distance_matrix") or []
+        xs: List[float] = []
+        ys: List[float] = []
+        n = len(names)
+        for i in range(n):
+            for j in range(i + 1, n):
+                tv = teacher_d[i][j] if i < len(teacher_d) and j < len(teacher_d[i]) else None
+                sv = avg_d[i][j] if i < len(avg_d) and j < len(avg_d[i]) else None
+                if isinstance(tv, (int, float)) and isinstance(sv, (int, float)):
+                    xs.append(float(tv))
+                    ys.append(float(sv))
+
+        if len(xs) < 3:
+            return {"ok": False, "label": "비교 부족", "score": None, "n_pairs": len(xs)}
+
+        mx = sum(xs) / len(xs)
+        my = sum(ys) / len(ys)
+        vx = sum((x - mx) ** 2 for x in xs)
+        vy = sum((y - my) ** 2 for y in ys)
+        if vx <= 1e-12 or vy <= 1e-12:
+            return {"ok": False, "label": "비교 부족", "score": None, "n_pairs": len(xs)}
+
+        corr = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / math.sqrt(vx * vy)
+        if corr >= 0.55:
+            label = "높음"
+        elif corr >= 0.25:
+            label = "보통"
+        else:
+            label = "낮음"
+        return {"ok": True, "label": label, "score": round(corr, 4), "n_pairs": len(xs)}
+    except Exception as e:
+        app.logger.exception("teacher_student_similarity_summary failed: %s %s", class_code, sid)
+        return {"ok": False, "label": "계산 오류", "score": None, "n_pairs": 0, "error": str(e)}
 
 
 SITE_TITLE = "내가 바라본 우리 반"
@@ -520,6 +626,38 @@ def sheet_list_results(class_code: str, sid: str) -> List[Dict[str, Any]]:
     if not isinstance(rows, list):
         return []
     return rows
+
+
+def sheet_upsert_teacher_survey(
+    class_code: str,
+    sid: str,
+    teacher_username: str,
+    survey_type: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Send teacher pre/post survey data to the connected Google Sheet."""
+    return post_to_sheet({
+        "action": "teacher_survey_upsert",
+        "survey_type": survey_type,
+        "teacher": teacher_username,
+        "class_code": class_code,
+        "session": str(sid),
+        "payload": payload or {},
+    })
+
+
+def sheet_upsert_research_session_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Send one class/session research summary row to the connected Google Sheet."""
+    body = dict(payload or {})
+    body["action"] = "research_session_summary_upsert"
+    return post_to_sheet(body)
+
+
+def sheet_append_archived_reset(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Send a reset archive snapshot to the connected Google Sheet."""
+    body = dict(payload or {})
+    body["action"] = "archived_session_reset_append"
+    return post_to_sheet(body)
 
       
 # -------------------------
@@ -1064,6 +1202,138 @@ def db_finalize_session_v2(class_code: str, sid: str, teacher_username: str) -> 
         """), {"code": class_code, "sid": sid, "t": teacher_username})
 
         return {"ok": True, "finalized": True}
+
+
+def build_research_session_summary(class_code: str, sid: str) -> Dict[str, Any]:
+    """Build one research/admin summary row for Google Sheets."""
+    students = db_get_students_in_class(class_code)
+    total = len(students)
+    submitted_map = db_get_submitted_map(class_code, sid)
+    submitted = sum(1 for s in students if submitted_map.get((s.get("name") or "").strip(), False))
+    similarity = teacher_student_similarity_summary(class_code, sid)
+
+    with engine.connect() as conn:
+        cls = conn.execute(text("""
+            SELECT name, teacher_username
+            FROM classes
+            WHERE code = :code
+            LIMIT 1
+        """), {"code": class_code}).fetchone()
+        tr = conn.execute(text("""
+            SELECT COUNT(*) AS n
+            FROM teacher_placement_runs
+            WHERE class_code = :code AND session_id = :sid AND submitted = TRUE
+        """), {"code": class_code, "sid": sid}).fetchone()
+        fin = conn.execute(text("""
+            SELECT exclusions_resolved, survey_submitted, finalized
+            FROM session_finalizations
+            WHERE class_code = :code AND session_id = :sid
+            LIMIT 1
+        """), {"code": class_code, "sid": sid}).fetchone()
+        survey = conn.execute(text("""
+            SELECT 1
+            FROM teacher_surveys
+            WHERE class_code = :code AND session_id = :sid
+            LIMIT 1
+        """), {"code": class_code, "sid": sid}).fetchone()
+
+    return {
+        "class_code": class_code,
+        "class_name": cls.name if cls else "",
+        "teacher": cls.teacher_username if cls else "",
+        "session": str(sid),
+        "visible_round": int(sid) - 1 if str(sid).isdigit() else sid,
+        "total_students": total,
+        "submitted_students": submitted,
+        "teacher_placement_done": int(tr.n or 0) > 0 if tr else False,
+        "exclusions_resolved": bool(getattr(fin, "exclusions_resolved", False)) if fin else False,
+        "post_survey_done": (bool(getattr(fin, "survey_submitted", False)) if fin else False) or bool(survey),
+        "finalized": bool(getattr(fin, "finalized", False)) if fin else False,
+        "similarity_label": similarity.get("label"),
+        "similarity_score": similarity.get("score"),
+        "similarity_pairs": similarity.get("n_pairs"),
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reason: str = "") -> int:
+    """Archive all session data as JSON, then clear the active session data."""
+    if not engine:
+        raise RuntimeError("DB engine not initialized")
+
+    with engine.begin() as conn:
+        teacher_runs = conn.execute(text("""
+            SELECT *
+            FROM teacher_placement_runs
+            WHERE class_code = :code AND session_id = :sid
+            ORDER BY id ASC
+        """), {"code": class_code, "sid": sid}).mappings().all()
+        run_ids = [int(r["id"]) for r in teacher_runs]
+
+        teacher_decisions = []
+        if run_ids:
+            teacher_decisions = conn.execute(text("""
+                SELECT *
+                FROM teacher_decisions
+                WHERE run_id = ANY(:run_ids)
+                ORDER BY run_id ASC, priority_rank ASC
+            """), {"run_ids": run_ids}).mappings().all()
+
+        def rows(sql: str) -> List[Dict[str, Any]]:
+            return [dict(r) for r in conn.execute(text(sql), {"code": class_code, "sid": sid}).mappings().all()]
+
+        payload = {
+            "class_code": class_code,
+            "session_id": sid,
+            "reset_by": reset_by,
+            "reset_reason": reason,
+            "archived_at": datetime.utcnow().isoformat() + "Z",
+            "student_sessions": rows("SELECT * FROM student_sessions WHERE class_code=:code AND sid=:sid ORDER BY id ASC"),
+            "teacher_placement_runs": [dict(r) for r in teacher_runs],
+            "teacher_decisions": [dict(r) for r in teacher_decisions],
+            "session_exclusions": rows("SELECT * FROM session_exclusions WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
+            "session_finalizations": rows("SELECT * FROM session_finalizations WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
+            "teacher_surveys": rows("SELECT * FROM teacher_surveys WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
+            "analysis_cache": rows("SELECT * FROM analysis_cache WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
+        }
+        payload = json.loads(json.dumps(payload, ensure_ascii=False, default=str))
+
+        res = conn.execute(text("""
+            INSERT INTO archived_session_resets
+            (class_code, session_id, reset_by, reset_reason, archived_payload)
+            VALUES (:code, :sid, :reset_by, :reason, CAST(:payload AS jsonb))
+            RETURNING id
+        """), {
+            "code": class_code,
+            "sid": sid,
+            "reset_by": reset_by,
+            "reason": reason,
+            "payload": json.dumps(payload, ensure_ascii=False),
+        }).fetchone()
+        archive_id = int(res.id)
+
+        if run_ids:
+            conn.execute(text("DELETE FROM teacher_decisions WHERE run_id = ANY(:run_ids)"), {"run_ids": run_ids})
+        conn.execute(text("DELETE FROM teacher_placement_runs WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        conn.execute(text("DELETE FROM student_sessions WHERE class_code=:code AND sid=:sid"), {"code": class_code, "sid": sid})
+        conn.execute(text("DELETE FROM session_exclusions WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        conn.execute(text("DELETE FROM session_finalizations WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        conn.execute(text("DELETE FROM teacher_surveys WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        conn.execute(text("DELETE FROM analysis_cache WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+
+    try:
+        sheet_append_archived_reset({
+            "archive_id": archive_id,
+            "class_code": class_code,
+            "session": str(sid),
+            "reset_by": reset_by,
+            "reset_reason": reason,
+            "archived_payload": payload,
+        })
+    except Exception:
+        app.logger.exception("sheet archive reset append failed")
+
+    return archive_id
 
 
 def db_get_student_session(class_code: str, student_name: str, sid: str) -> Optional[Dict[str, Any]]:
@@ -1962,6 +2232,38 @@ def research_admin():
     return render_template("research_admin.html", db_ready=True, overview=overview)
 
 
+@app.route("/research/class/<code>/session/<sid>/sync_sheet", methods=["POST"])
+def research_sync_session_sheet(code: str, sid: str):
+    guard = require_admin()
+    if guard is not None:
+        return guard
+    if not engine:
+        return jsonify({"ok": False, "error": "DB_NOT_CONFIGURED"}), 400
+
+    code = (code or "").upper().strip()
+    sid = normalize_visible_session_id(sid)
+    payload = build_research_session_summary(code, sid)
+    resp = sheet_upsert_research_session_summary(payload)
+    if resp.get("status") != "ok":
+        return jsonify({"ok": False, "error": "SHEET_ERROR", "sheet": resp}), 500
+    return jsonify({"ok": True, "sheet": resp, "payload": payload})
+
+
+@app.route("/research/class/<code>/session/<sid>/reset", methods=["POST"])
+def research_reset_session(code: str, sid: str):
+    guard = require_admin()
+    if guard is not None:
+        return guard
+    if not engine:
+        return jsonify({"ok": False, "error": "DB_NOT_CONFIGURED"}), 400
+
+    code = (code or "").upper().strip()
+    sid = normalize_visible_session_id(sid)
+    reason = (request.form.get("reason") or "").strip()
+    archive_id = db_archive_and_reset_session(code, sid, session.get("teacher") or "admin", reason)
+    return jsonify({"ok": True, "archive_id": archive_id})
+
+
 @app.route("/research/export/student_sessions.xlsx")
 def export_student_sessions_xlsx():
     guard = require_admin()
@@ -2800,7 +3102,13 @@ def api_v2_survey(code: str, sid: str):
 
     payload = request.get_json(silent=True) or {}
     db_upsert_survey_v2(code, sid, t, payload)
-    return jsonify({"ok": True, "survey_submitted": True})
+    sheet_resp = sheet_upsert_teacher_survey(code, sid, t, "post", payload)
+    return jsonify({
+        "ok": True,
+        "survey_submitted": True,
+        "sheet_status": sheet_resp.get("status"),
+        "sheet_message": sheet_resp.get("message"),
+    })
 
 
 @app.route("/api/v2/class/<code>/session/<sid>/survey", methods=["GET"])
@@ -3488,6 +3796,17 @@ def teacher_placement_complete(run_id: int):
 
         db_replace_teacher_decisions(run_id, decisions)
         db_complete_teacher_run(run_id, confidence_score=confidence_score)
+        sheet_upsert_teacher_survey(
+            run["class_code"],
+            run["session_id"],
+            session["teacher"],
+            "pre",
+            {
+                "run_id": run_id,
+                "confidence_score": confidence_score,
+                "priority_students": decisions,
+            },
+        )
 
         return redirect(f"/teacher/class/{run['class_code']}?sid={run['session_id']}")
 
