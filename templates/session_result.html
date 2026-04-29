@@ -75,7 +75,89 @@
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     <a class="pill primary" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
+    <button type="button" class="pill primary" id="btnOpenTeacherSurvey">교사 설문</button>
   </div>
+
+  <section class="survey-box" id="teacherSurveyBox" style="display:none;">
+    <div class="panel-head">
+      <div>
+        <div class="section-title">교사 설문</div>
+        <div class="subtitle">결과를 확인한 뒤 간단히 기록해 주세요.</div>
+      </div>
+      <span id="surveyStatus" class="status">설문 미완료</span>
+    </div>
+
+    <div id="surveyFormBody" class="survey-form">
+      <div class="radio-group">
+        <div class="question-title">1. 이번 회차의 관계 지도 결과가 학급 및 교우관계를 이해하는 데 유용했습니까?</div>
+        {% for i in [1,2,3,4,5] %}
+          <label><input type="radio" name="q1_help" value="{{ i }}"> {{ i }}</label>
+        {% endfor %}
+        <span class="subtitle">(1=전혀 아님, 5=매우 그럼)</span>
+      </div>
+
+      <div class="radio-group">
+        <div class="question-title">2. 기존에 인식하지 못했던 관계나 집단 구조가 있었습니까?</div>
+        <label><input type="radio" name="q2_new" value="yes"> 있었다</label>
+        <label><input type="radio" name="q2_new" value="no"> 없었다</label>
+        <textarea id="q2_detail" rows="3" placeholder="선택: 새롭게 인식한 관계나 구조를 적어 주세요."></textarea>
+      </div>
+
+      <div class="radio-group">
+        <div class="question-title">3. 학생 상담/생활지도 판단 시 참고 자료로 사용할 수 있다고 생각합니까?</div>
+        {% for i in [1,2,3,4,5] %}
+          <label><input type="radio" name="q3_use" value="{{ i }}"> {{ i }}</label>
+        {% endfor %}
+        <span class="subtitle">(1=전혀 아님, 5=매우 그럼)</span>
+      </div>
+
+      <div class="radio-group">
+        <div class="question-title">4. 평소 관계 인식과 비교했을 때 어떤 차이가 있었습니까?</div>
+        <label><input type="radio" name="q4_cmp" value="similar"> 대부분 유사했다</label>
+        <label><input type="radio" name="q4_cmp" value="some"> 일부 차이가 있었다</label>
+        <label><input type="radio" name="q4_cmp" value="many"> 상당한 차이가 있었다</label>
+        <textarea id="q4_detail" rows="3" placeholder="선택: 차이가 있었다면 이유나 인상을 적어 주세요."></textarea>
+      </div>
+
+      <div class="radio-group">
+        <div class="question-title">5. 이 도구를 사용하면서 관계 판단에 대한 확신은 어떻게 변했습니까?</div>
+        <label><input type="radio" name="q5_conf" value="confused"> 오히려 어려워졌다</label>
+        <label><input type="radio" name="q5_conf" value="same"> 큰 변화는 없었다</label>
+        <label><input type="radio" name="q5_conf" value="little"> 조금 더 확신이 생겼다</label>
+        <label><input type="radio" name="q5_conf" value="much"> 훨씬 명확해졌다</label>
+      </div>
+
+      <div class="radio-group">
+        <div class="question-title">6. 다음 회차에서도 이 도구를 사용할 의향이 있습니까?</div>
+        <label><input type="radio" name="q6_next" value="yes"> 있다</label>
+        <label><input type="radio" name="q6_next" value="no"> 없다</label>
+        <label><input type="radio" name="q6_next" value="maybe"> 상황에 따라 다르다</label>
+      </div>
+
+      <div class="radio-group">
+        <div class="question-title">7. 불편했던 점이나 개선 의견이 있다면 적어 주세요.</div>
+        <textarea id="q7_feedback" rows="3" placeholder="자유롭게 작성"></textarea>
+      </div>
+
+      <div class="btn-row">
+        <button type="button" class="pill primary" id="btnSurveySubmit">설문 제출</button>
+        <span class="subtitle" id="surveyHint">제출하면 이번 회차 조사가 완료됩니다.</span>
+      </div>
+    </div>
+
+    <div class="survey-done" id="surveyDoneBox" style="display:none;">
+      <div class="done-title">{{ display_sid }}회차 조사가 완료되었습니다.</div>
+      <div class="done-message">참여해주셔서 진심으로 감사드립니다.</div>
+      <div class="btn-row" style="margin-top:10px;">
+        <button type="button" class="pill" id="btnSurveyEdit">설문 수정</button>
+      </div>
+    </div>
+
+    <div class="caution-box" id="surveyGateMsg" style="display:none; margin-top:10px;">
+      <p>회차 화면에서 참여 제외 학생 확인을 먼저 완료해 주세요.</p>
+    </div>
+  </section>
+
 </div>
 
 <style>
@@ -267,6 +349,74 @@
     padding: 9px 12px;
   }
   .caution-box p { margin: 0; }
+  .survey-box {
+    margin-top: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+  }
+  .survey-form {
+    margin-top: 12px;
+    border: 1px solid #eef2f7;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+  }
+  .radio-group {
+    margin-top: 12px;
+  }
+  .radio-group:first-child {
+    margin-top: 0;
+  }
+  .radio-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 4px 12px 4px 0;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .question-title {
+    font-weight: 900;
+    margin-bottom: 6px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 72px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 11px;
+    font: inherit;
+    box-sizing: border-box;
+    resize: vertical;
+    margin-top: 8px;
+  }
+  .btn-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .survey-done {
+    margin-top: 12px;
+    border: 1px solid #d1fae5;
+    border-radius: 12px;
+    background: #ecfdf5;
+    color: #065f46;
+    padding: 16px;
+    text-align: center;
+  }
+  .done-title {
+    font-size: 18px;
+    font-weight: 950;
+  }
+  .done-message {
+    margin-top: 6px;
+    font-size: 14px;
+    font-weight: 800;
+  }
   @media(max-width: 900px) {
     .result-grid { grid-template-columns: 1fr; }
   }
@@ -278,6 +428,8 @@
   const sid = "{{ sid }}";
   const initialPayload = {{ spm_payload|tojson }};
   const initialError = {{ spm_error|tojson }};
+  const initialState = {{ state|tojson }};
+  const API_BASE = `/api/v2/class/${code}/session/${sid}`;
   const canvas = document.getElementById('spmCanvas');
   const ctx = canvas.getContext('2d');
   const palette = ['#111827', '#4b5563', '#6b7280', '#374151', '#9ca3af', '#1f2937'];
@@ -514,6 +666,125 @@
         drawMap([]);
       }
     });
+
+  const surveyFormBody = document.getElementById('surveyFormBody');
+  const surveyDoneBox = document.getElementById('surveyDoneBox');
+  const surveyStatus = document.getElementById('surveyStatus');
+  const surveyGateMsg = document.getElementById('surveyGateMsg');
+  const teacherSurveyBox = document.getElementById('teacherSurveyBox');
+  const btnOpenTeacherSurvey = document.getElementById('btnOpenTeacherSurvey');
+  const btnSurveySubmit = document.getElementById('btnSurveySubmit');
+  const btnSurveyEdit = document.getElementById('btnSurveyEdit');
+
+  function setSurveyCollapsed(done){
+    if (surveyFormBody) surveyFormBody.style.display = done ? 'none' : 'block';
+    if (surveyDoneBox) surveyDoneBox.style.display = done ? 'block' : 'none';
+    if (surveyStatus) {
+      surveyStatus.textContent = done ? '설문 완료' : '설문 미완료';
+      surveyStatus.style.background = done ? '#ecfdf5' : '#f8fafc';
+      surveyStatus.style.borderColor = done ? '#bbf7d0' : '#e5e7eb';
+      surveyStatus.style.color = done ? '#065f46' : '#374151';
+    }
+  }
+
+  function getRadio(name){
+    const el = document.querySelector(`input[name="${name}"]:checked`);
+    return el ? el.value : null;
+  }
+
+  function setRadio(name, value){
+    if (value === null || value === undefined || value === '') return;
+    const radios = Array.from(document.querySelectorAll(`input[name="${name}"]`));
+    const hit = radios.find(el => String(el.value) === String(value));
+    if (hit) hit.checked = true;
+  }
+
+  function setTextValue(id, value){
+    const el = document.getElementById(id);
+    if (el) el.value = value || '';
+  }
+
+  function fillSurveyForm(survey){
+    if (!survey) return;
+    setRadio('q1_help', survey.q1_help);
+    setRadio('q2_new', survey.q2_new);
+    setTextValue('q2_detail', survey.q2_detail);
+    setRadio('q3_use', survey.q3_use);
+    setRadio('q4_cmp', survey.q4_cmp);
+    setTextValue('q4_detail', survey.q4_detail);
+    setRadio('q5_conf', survey.q5_conf);
+    setRadio('q6_next', survey.q6_next);
+    setTextValue('q7_feedback', survey.q7_feedback);
+  }
+
+  async function apiPost(path, payload){
+    const res = await fetch(`${API_BASE}/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = (data && data.error) ? data.error : `HTTP ${res.status}`;
+      const err = new Error(msg);
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  fillSurveyForm(initialState && initialState.survey);
+  setSurveyCollapsed(!!(initialState && initialState.survey_submitted));
+  if (btnOpenTeacherSurvey && initialState && initialState.survey_submitted) {
+    btnOpenTeacherSurvey.textContent = '교사 설문 보기';
+  }
+
+  if (btnOpenTeacherSurvey) {
+    btnOpenTeacherSurvey.addEventListener('click', () => {
+      if (teacherSurveyBox) {
+        teacherSurveyBox.style.display = 'block';
+        teacherSurveyBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  if (btnSurveySubmit) {
+    btnSurveySubmit.addEventListener('click', async () => {
+      if (surveyGateMsg) surveyGateMsg.style.display = 'none';
+      const payload = {
+        q1_help: getRadio('q1_help'),
+        q2_new: getRadio('q2_new'),
+        q2_detail: (document.getElementById('q2_detail') || {}).value || '',
+        q3_use: getRadio('q3_use'),
+        q4_cmp: getRadio('q4_cmp'),
+        q4_detail: (document.getElementById('q4_detail') || {}).value || '',
+        q5_conf: getRadio('q5_conf'),
+        q6_next: getRadio('q6_next'),
+        q7_feedback: (document.getElementById('q7_feedback') || {}).value || ''
+      };
+
+      try {
+        await apiPost('survey', payload);
+        await apiPost('finalize', {});
+        if (teacherSurveyBox) teacherSurveyBox.style.display = 'block';
+        setSurveyCollapsed(true);
+        if (btnOpenTeacherSurvey) btnOpenTeacherSurvey.textContent = '교사 설문 보기';
+      } catch (e) {
+        if (String(e.message) === 'NOT_READY') {
+          if (surveyGateMsg) surveyGateMsg.style.display = 'block';
+        } else {
+          alert('설문 저장에 실패했습니다. 새로고침 후 다시 시도해 주세요.');
+        }
+      }
+    });
+  }
+
+  if (btnSurveyEdit) {
+    btnSurveyEdit.addEventListener('click', () => {
+      if (surveyGateMsg) surveyGateMsg.style.display = 'none';
+      setSurveyCollapsed(false);
+    });
+  }
 })();
 </script>
 {% endblock %}
