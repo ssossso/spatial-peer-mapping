@@ -5,6 +5,7 @@
     <div>
       <h2>연구/관리 대시보드</h2>
       <p>학급별 진행 상태를 확인하고, 연구용 구글 시트에 요약 데이터를 저장합니다.</p>
+      <p class="archive-note">초기화 시 데이터는 보관됩니다.</p>
     </div>
   </header>
 
@@ -65,18 +66,22 @@
                     <div class="status-cell">
                       <span>학생 배치</span>
                       <b>{{ s.student_submitted }}/{{ s.student_total }}</b>
+                      <button type="button" class="mini-reset" data-reset-session data-reset-scope="student" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 학생 배치">초기화</button>
                     </div>
                     <div class="status-cell">
                       <span>교사 배치</span>
                       <b>{% if s.teacher_placement_done %}완료{% else %}미완료{% endif %}</b>
+                      <button type="button" class="mini-reset" data-reset-session data-reset-scope="teacher" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 교사 배치">초기화</button>
                     </div>
                     <div class="status-cell">
                       <span>교사 사전 설문</span>
                       <b>{% if s.pre_survey_done %}기록됨{% else %}미기록{% endif %}</b>
+                      <button type="button" class="mini-reset" data-reset-session data-reset-scope="pre_survey" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 교사 사전 설문">초기화</button>
                     </div>
                     <div class="status-cell">
                       <span>교사 사후 설문</span>
                       <b>{% if s.post_survey_done %}완료{% else %}미완료{% endif %}</b>
+                      <button type="button" class="mini-reset" data-reset-session data-reset-scope="post_survey" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 교사 사후 설문">초기화</button>
                     </div>
                     <div class="status-cell">
                       <span>인식 유사도</span>
@@ -96,7 +101,7 @@
                   <div class="action-row">
                     <a class="btn btn-primary" href="/teacher/class/{{ c.code }}/result/{{ s.sid }}" target="_blank" rel="noopener noreferrer">결과 페이지 보기</a>
                     <button type="button" class="btn" data-sync-sheet data-code="{{ c.code }}" data-sid="{{ s.sid }}">구글 시트 저장</button>
-                    <button type="button" class="btn danger" data-reset-session data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }}">보관 후 초기화</button>
+                    <button type="button" class="btn danger" data-reset-session data-reset-scope="all" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 전체">전체 초기화</button>
                   </div>
                 </details>
               {% endfor %}
@@ -138,6 +143,10 @@
     color: #6b7280;
     font-size: 13px;
     font-weight: 700;
+  }
+  .archive-note {
+    color: #4b5563;
+    font-weight: 900;
   }
   .research-layout {
     display: grid;
@@ -261,6 +270,20 @@
     gap: 8px;
     margin-top: 12px;
   }
+  .mini-reset {
+    margin-top: 8px;
+    width: auto;
+    padding: 6px 9px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fff;
+    color: #991b1b;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .mini-reset:hover {
+    background: #fef2f2;
+  }
   .btn.danger {
     border-color: #fecaca;
     color: #991b1b;
@@ -335,6 +358,7 @@
   document.querySelectorAll('[data-reset-session]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const label = btn.dataset.label || `${btn.dataset.sid}회차`;
+      const scope = btn.dataset.resetScope || 'all';
       const ok = confirm(`${label} 데이터를 정말 초기화하시겠습니까?\n\n초기화 전 데이터는 복구 가능하도록 보관됩니다.`);
       if (!ok) return;
       const reason = prompt('초기화 사유를 적어 주세요. 비워두어도 됩니다.') || '';
@@ -342,7 +366,10 @@
       const old = btn.textContent;
       btn.textContent = '초기화 중...';
       try {
-        await post(`/research/class/${btn.dataset.code}/session/${btn.dataset.sid}/reset`, new URLSearchParams({ reason }).toString());
+        await post(
+          `/research/class/${btn.dataset.code}/session/${btn.dataset.sid}/reset`,
+          new URLSearchParams({ reason, scope }).toString()
+        );
         alert('보관 후 초기화가 완료되었습니다.');
         window.location.reload();
       } catch (e) {
