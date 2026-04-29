@@ -488,7 +488,15 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                     "student_progress_pct": round((submitted / int(student_cnt or 1)) * 100),
                     "teacher_placement_done": teacher_submitted > 0,
                     "teacher_placement_count": teacher_submitted,
-                    "pre_survey_done": teacher_submitted > 0,
+                    "pre_survey_done": bool(conn.execute(text("""
+                        SELECT 1
+                        FROM teacher_placement_runs
+                        WHERE class_code = :code
+                          AND session_id = :sid
+                          AND submitted = TRUE
+                          AND confidence_score IS NOT NULL
+                        LIMIT 1
+                    """), {"code": c.code, "sid": sid}).fetchone()),
                     "post_survey_done": bool(survey),
                     "exclusions_resolved": bool(getattr(fin, "exclusions_resolved", False)) if fin else False,
                     "finalized": bool(getattr(fin, "finalized", False)) if fin else False,
@@ -1297,10 +1305,15 @@ def build_research_session_summary(class_code: str, sid: str) -> Dict[str, Any]:
     }
 
 
-def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reason: str = "") -> int:
-    """Archive all session data as JSON, then clear the active session data."""
+def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reason: str = "", scope: str = "all") -> int:
+    """Archive selected session data as JSON, then clear that active data."""
     if not engine:
         raise RuntimeError("DB engine not initialized")
+
+    scope = (scope or "all").strip()
+    allowed_scopes = {"all", "student", "teacher", "pre_survey", "post_survey"}
+    if scope not in allowed_scopes:
+        scope = "all"
 
     with engine.begin() as conn:
         teacher_runs = conn.execute(text("""
@@ -1328,14 +1341,15 @@ def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reaso
             "session_id": sid,
             "reset_by": reset_by,
             "reset_reason": reason,
+            "reset_scope": scope,
             "archived_at": datetime.utcnow().isoformat() + "Z",
-            "student_sessions": rows("SELECT * FROM student_sessions WHERE class_code=:code AND sid=:sid ORDER BY id ASC"),
-            "teacher_placement_runs": [dict(r) for r in teacher_runs],
-            "teacher_decisions": [dict(r) for r in teacher_decisions],
-            "session_exclusions": rows("SELECT * FROM session_exclusions WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
-            "session_finalizations": rows("SELECT * FROM session_finalizations WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
-            "teacher_surveys": rows("SELECT * FROM teacher_surveys WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
-            "analysis_cache": rows("SELECT * FROM analysis_cache WHERE class_code=:code AND session_id=:sid ORDER BY id ASC"),
+            "student_sessions": rows("SELECT * FROM student_sessions WHERE class_code=:code AND sid=:sid ORDER BY id ASC") if scope in {"all", "student"} else [],
+            "teacher_placement_runs": [dict(r) for r in teacher_runs] if scope in {"all", "teacher", "pre_survey"} else [],
+            "teacher_decisions": [dict(r) for r in teacher_decisions] if scope in {"all", "teacher", "pre_survey"} else [],
+            "session_exclusions": rows("SELECT * FROM session_exclusions WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student"} else [],
+            "session_finalizations": rows("SELECT * FROM session_finalizations WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student", "post_survey"} else [],
+            "teacher_surveys": rows("SELECT * FROM teacher_surveys WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "post_survey"} else [],
+            "analysis_cache": rows("SELECT * FROM analysis_cache WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student", "teacher"} else [],
         }
         payload = json.loads(json.dumps(payload, ensure_ascii=False, default=str))
 
@@ -1353,14 +1367,41 @@ def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reaso
         }).fetchone()
         archive_id = int(res.id)
 
-        if run_ids:
+        if scope in {"all", "teacher", "pre_survey"} and run_ids:
             conn.execute(text("DELETE FROM teacher_decisions WHERE run_id = ANY(:run_ids)"), {"run_ids": run_ids})
-        conn.execute(text("DELETE FROM teacher_placement_runs WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
-        conn.execute(text("DELETE FROM student_sessions WHERE class_code=:code AND sid=:sid"), {"code": class_code, "sid": sid})
-        conn.execute(text("DELETE FROM session_exclusions WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
-        conn.execute(text("DELETE FROM session_finalizations WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
-        conn.execute(text("DELETE FROM teacher_surveys WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
-        conn.execute(text("DELETE FROM analysis_cache WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        if scope == "pre_survey":
+            conn.execute(text("""
+                UPDATE teacher_placement_runs
+                SET confidence_score = NULL
+                WHERE class_code=:code AND session_id=:sid
+            """), {"code": class_code, "sid": sid})
+        if scope in {"all", "teacher"}:
+            conn.execute(text("DELETE FROM teacher_placement_runs WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        if scope in {"all", "student"}:
+            conn.execute(text("DELETE FROM student_sessions WHERE class_code=:code AND sid=:sid"), {"code": class_code, "sid": sid})
+            conn.execute(text("DELETE FROM session_exclusions WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        if scope in {"all", "post_survey"}:
+            conn.execute(text("DELETE FROM teacher_surveys WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        if scope == "all":
+            conn.execute(text("DELETE FROM session_finalizations WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+        elif scope == "student":
+            conn.execute(text("""
+                UPDATE session_finalizations
+                SET exclusions_resolved = FALSE,
+                    finalized = FALSE,
+                    updated_at = NOW()
+                WHERE class_code=:code AND session_id=:sid
+            """), {"code": class_code, "sid": sid})
+        elif scope == "post_survey":
+            conn.execute(text("""
+                UPDATE session_finalizations
+                SET survey_submitted = FALSE,
+                    finalized = FALSE,
+                    updated_at = NOW()
+                WHERE class_code=:code AND session_id=:sid
+            """), {"code": class_code, "sid": sid})
+        if scope in {"all", "student", "teacher"}:
+            conn.execute(text("DELETE FROM analysis_cache WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
 
     try:
         sheet_append_archived_reset({
@@ -1369,6 +1410,7 @@ def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reaso
             "session": str(sid),
             "reset_by": reset_by,
             "reset_reason": reason,
+            "reset_scope": scope,
             "archived_payload": payload,
         })
     except Exception:
@@ -2301,8 +2343,9 @@ def research_reset_session(code: str, sid: str):
     code = (code or "").upper().strip()
     sid = normalize_visible_session_id(sid)
     reason = (request.form.get("reason") or "").strip()
-    archive_id = db_archive_and_reset_session(code, sid, session.get("teacher") or "admin", reason)
-    return jsonify({"ok": True, "archive_id": archive_id})
+    scope = (request.form.get("scope") or "all").strip()
+    archive_id = db_archive_and_reset_session(code, sid, session.get("teacher") or "admin", reason, scope=scope)
+    return jsonify({"ok": True, "archive_id": archive_id, "scope": scope})
 
 
 @app.route("/research/export/student_sessions.xlsx")
