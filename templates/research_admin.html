@@ -1,120 +1,357 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>연구/관리 데이터</h2>
-  <div style="margin-top:6px; color:#6b7280; font-size:14px;">
-    이 페이지는 연구자(관리자) 전용입니다. (엑셀 내보내기 포함)
-  </div>
+<div class="research-shell">
+  <header class="research-head">
+    <div>
+      <h2>연구/관리 대시보드</h2>
+      <p>학급별 진행 상태를 확인하고, 연구용 구글 시트에 요약 데이터를 저장합니다.</p>
+    </div>
+  </header>
 
   {% if not db_ready %}
-    <hr style="margin:16px 0;">
-    <div class="error">
-      현재 DB 연결이 설정되지 않아(또는 사용 중이 아니라) 연구 데이터 조회/내보내기를 사용할 수 없습니다.<br>
-      Render 환경변수 DATABASE_URL 설정 후 다시 시도해 주세요.
-    </div>
-
-    <hr style="margin:16px 0;">
-    <h3 style="margin:0 0 8px 0;">프레임(추후 연결 예정)</h3>
-    <ul style="margin:0; padding-left:18px; color:#6b7280;">
-      <li>‘이번 회차 분석 결과 저장’ 전송 로그(전송일시) 조회</li>
-      <li>분석 스냅샷(학생 평균/MDS/K-means 요약) 다운로드</li>
-      <li>교사 사후 검사(확신도/인식 변화 체크) 결과 다운로드</li>
-    </ul>
+    <div class="notice error">DB 연결이 설정되지 않아 연구 데이터를 조회할 수 없습니다.</div>
+  {% elif overview|length == 0 %}
+    <div class="notice">등록된 학급 데이터가 없습니다.</div>
   {% else %}
-    <hr style="margin:16px 0;">
+    <div class="research-layout">
+      <aside class="class-list" aria-label="학급 목록">
+        {% for c in overview %}
+          <button
+            type="button"
+            class="class-item {% if loop.first %}active{% endif %}"
+            data-class-code="{{ c.code }}"
+          >
+            <span class="class-title">{{ c.name }}</span>
+            <span class="class-meta">{{ c.code }} · {{ c.teacher_username }}</span>
+            <span class="class-meta">학생 {{ c.student_count }}명</span>
+          </button>
+        {% endfor %}
+      </aside>
 
-    <h3 style="margin:0 0 10px 0;">학급 목록</h3>
-
-    {% if overview|length == 0 %}
-      <div style="color:#6b7280;">DB에 학급 데이터가 없습니다.</div>
-    {% endif %}
-
-    {% for c in overview %}
-      <div class="card" style="margin-top:12px; background:#fafafa;">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-          <div>
-            <div style="font-weight:700;">
-              {{ c.name }} <span style="color:#6b7280; font-weight:500;">({{ c.code }})</span>
+      <section class="class-detail">
+        {% for c in overview %}
+          <article class="detail-card {% if loop.first %}active{% endif %}" data-detail-code="{{ c.code }}">
+            <div class="detail-top">
+              <div>
+                <h3>{{ c.name }}</h3>
+                <p>{{ c.code }} · {{ c.teacher_username }} · 학생 {{ c.student_count }}명</p>
+              </div>
+              <a class="btn" href="/teacher/class/{{ c.code }}/students">학급 정보 수정</a>
             </div>
-            <div style="color:#6b7280; font-size:13px; margin-top:4px;">
-              teacher: {{ c.teacher_username }} · students: {{ c.student_count }}
-              {% if c.created_at %} · created: {{ c.created_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+
+            <div class="session-list">
+              {% for s in c.sessions %}
+                <details class="session-card" {% if loop.first %}open{% endif %}>
+                  <summary>
+                    <span>{{ s.label }}</span>
+                    <span class="summary-meta">
+                      학생 {{ s.student_submitted }}/{{ s.student_total }}
+                      · 교사 배치 {% if s.teacher_placement_done %}완료{% else %}미완료{% endif %}
+                      · 사후 설문 {% if s.post_survey_done %}완료{% else %}미완료{% endif %}
+                    </span>
+                  </summary>
+
+                  <div class="progress-wrap">
+                    <div class="progress-label">
+                      <span>학생 배치 진척도</span>
+                      <b>{{ s.student_progress_pct }}%</b>
+                    </div>
+                    <div class="progress-bar">
+                      <span style="width: {{ s.student_progress_pct }}%;"></span>
+                    </div>
+                  </div>
+
+                  <div class="status-grid">
+                    <div class="status-cell">
+                      <span>학생 배치</span>
+                      <b>{{ s.student_submitted }}/{{ s.student_total }}</b>
+                    </div>
+                    <div class="status-cell">
+                      <span>교사 배치</span>
+                      <b>{% if s.teacher_placement_done %}완료{% else %}미완료{% endif %}</b>
+                    </div>
+                    <div class="status-cell">
+                      <span>교사 사전 설문</span>
+                      <b>{% if s.pre_survey_done %}기록됨{% else %}미기록{% endif %}</b>
+                    </div>
+                    <div class="status-cell">
+                      <span>교사 사후 설문</span>
+                      <b>{% if s.post_survey_done %}완료{% else %}미완료{% endif %}</b>
+                    </div>
+                    <div class="status-cell">
+                      <span>인식 유사도</span>
+                      <b>
+                        {{ s.similarity.label }}
+                        {% if s.similarity.score is not none %}
+                          <small>({{ s.similarity.score }})</small>
+                        {% endif %}
+                      </b>
+                    </div>
+                    <div class="status-cell">
+                      <span>초기화 보관</span>
+                      <b>{{ s.reset_count }}건</b>
+                    </div>
+                  </div>
+
+                  <div class="action-row">
+                    <a class="btn btn-primary" href="/teacher/class/{{ c.code }}/result/{{ s.sid }}" target="_blank" rel="noopener noreferrer">결과 페이지 보기</a>
+                    <button type="button" class="btn" data-sync-sheet data-code="{{ c.code }}" data-sid="{{ s.sid }}">구글 시트 저장</button>
+                    <button type="button" class="btn danger" data-reset-session data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }}">보관 후 초기화</button>
+                  </div>
+                </details>
+              {% endfor %}
             </div>
-          </div>
-        </div>
-
-        <hr style="margin:12px 0;">
-
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px;">
-          <div>
-            <div style="font-weight:700; margin-bottom:6px;">학생 세션(학생 배치)</div>
-            {% if c.student_sessions|length == 0 %}
-              <div style="color:#6b7280; font-size:13px;">(데이터 없음)</div>
-            {% else %}
-              <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                <thead>
-                  <tr style="text-align:left; color:#6b7280;">
-                    <th style="padding:6px 0;">차시(sid)</th>
-                    <th style="padding:6px 0;">제출/전체</th>
-                    <th style="padding:6px 0;">엑셀</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for s in c.student_sessions %}
-                  <tr>
-                    <td style="padding:6px 0;">{{ s.sid }}</td>
-                    <td style="padding:6px 0;">{{ s.submitted }}/{{ s.total }}</td>
-                    <td style="padding:6px 0;">
-                      <a href="/research/export/student_sessions.xlsx?class_code={{ c.code }}&sid={{ s.sid }}"
-                         style="text-decoration:underline;">내보내기</a>
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            {% endif %}
-          </div>
-
-          <div>
-            <div style="font-weight:700; margin-bottom:6px;">교사 런(교사 배치/판단)</div>
-            {% if c.teacher_runs|length == 0 %}
-              <div style="color:#6b7280; font-size:13px;">(데이터 없음)</div>
-            {% else %}
-              <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                <thead>
-                  <tr style="text-align:left; color:#6b7280;">
-                    <th style="padding:6px 0;">차시(session_id)</th>
-                    <th style="padding:6px 0;">제출/전체</th>
-                    <th style="padding:6px 0;">엑셀</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for t in c.teacher_runs %}
-                  <tr>
-                    <td style="padding:6px 0;">{{ t.session_id }}</td>
-                    <td style="padding:6px 0;">{{ t.submitted }}/{{ t.total }}</td>
-                    <td style="padding:6px 0;">
-                      <a href="/research/export/teacher_runs.xlsx?class_code={{ c.code }}&session_id={{ t.session_id }}"
-                         style="text-decoration:underline;">내보내기</a>
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            {% endif %}
-          </div>
-        </div>
-
-        <hr style="margin:12px 0;">
-
-        <div style="font-weight:700; margin-bottom:6px;">추후 연결 예정(프레임)</div>
-        <ul style="margin:0; padding-left:18px; color:#6b7280; font-size:13px;">
-          <li>‘이번 회차 분석 결과 저장’ 전송 로그(전송일시) 조회/다운로드</li>
-          <li>분석 스냅샷: 학생 평균 거리행렬 / MDS 좌표 / K-means 요약 저장본</li>
-          <li>교사 사후 검사: 확신도(전/후), 인식 변화 체크, 추가 주목 학생(선택) 내보내기</li>
-        </ul>
-      </div>
-    {% endfor %}
+          </article>
+        {% endfor %}
+      </section>
+    </div>
   {% endif %}
 </div>
+
+<style>
+  .research-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    text-align: left;
+  }
+  .research-head,
+  .detail-card,
+  .class-list,
+  .notice {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+  .research-head {
+    padding: 18px 20px;
+    margin-bottom: 14px;
+  }
+  .research-head h2,
+  .detail-top h3 {
+    margin: 0;
+  }
+  .research-head p,
+  .detail-top p,
+  .class-meta {
+    margin: 6px 0 0;
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .research-layout {
+    display: grid;
+    grid-template-columns: 270px minmax(0, 1fr);
+    gap: 14px;
+  }
+  .class-list {
+    padding: 8px;
+    align-self: start;
+  }
+  .class-item {
+    width: 100%;
+    display: block;
+    text-align: left;
+    border: 1px solid transparent;
+    background: #fff;
+    color: #111827;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 0 0 6px;
+  }
+  .class-item:hover,
+  .class-item.active {
+    background: #f6f8ff;
+    border-color: #c7d2fe;
+  }
+  .class-title {
+    display: block;
+    font-weight: 950;
+  }
+  .class-meta {
+    display: block;
+  }
+  .detail-card {
+    display: none;
+    padding: 16px;
+  }
+  .detail-card.active {
+    display: block;
+  }
+  .detail-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .session-list {
+    display: grid;
+    gap: 10px;
+  }
+  .session-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fbfbfd;
+    padding: 12px;
+  }
+  .session-card summary {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-weight: 950;
+  }
+  .summary-meta {
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .progress-wrap {
+    margin-top: 12px;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 900;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+  .progress-bar {
+    height: 9px;
+    border-radius: 999px;
+    background: #e5e7eb;
+    overflow: hidden;
+  }
+  .progress-bar span {
+    display: block;
+    height: 100%;
+    background: #4a6cf7;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .status-cell {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px;
+    background: #fff;
+  }
+  .status-cell span {
+    display: block;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 900;
+    margin-bottom: 4px;
+  }
+  .status-cell b {
+    font-size: 15px;
+  }
+  .status-cell small {
+    color: #6b7280;
+    font-size: 12px;
+  }
+  .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .btn.danger {
+    border-color: #fecaca;
+    color: #991b1b;
+  }
+  .notice {
+    padding: 16px;
+    color: #374151;
+    font-weight: 800;
+  }
+  .notice.error {
+    color: #991b1b;
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+  @media(max-width: 860px) {
+    .research-layout {
+      grid-template-columns: 1fr;
+    }
+    .status-grid {
+      grid-template-columns: 1fr;
+    }
+    .session-card summary,
+    .detail-top {
+      flex-direction: column;
+    }
+  }
+</style>
+
+<script>
+(function(){
+  const items = Array.from(document.querySelectorAll('.class-item'));
+  const cards = Array.from(document.querySelectorAll('.detail-card'));
+
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      const code = item.dataset.classCode;
+      items.forEach(x => x.classList.toggle('active', x === item));
+      cards.forEach(card => card.classList.toggle('active', card.dataset.detailCode === code));
+    });
+  });
+
+  async function post(url, body){
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body || ''
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
+    }
+    return data;
+  }
+
+  document.querySelectorAll('[data-sync-sheet]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const old = btn.textContent;
+      btn.textContent = '저장 중...';
+      btn.disabled = true;
+      try {
+        await post(`/research/class/${btn.dataset.code}/session/${btn.dataset.sid}/sync_sheet`);
+        btn.textContent = '저장 완료';
+        setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 1200);
+      } catch (e) {
+        alert(`구글 시트 저장에 실패했습니다: ${e.message || e}`);
+        btn.textContent = old;
+        btn.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-reset-session]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const label = btn.dataset.label || `${btn.dataset.sid}회차`;
+      const ok = confirm(`${label} 데이터를 정말 초기화하시겠습니까?\n\n초기화 전 데이터는 복구 가능하도록 보관됩니다.`);
+      if (!ok) return;
+      const reason = prompt('초기화 사유를 적어 주세요. 비워두어도 됩니다.') || '';
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = '초기화 중...';
+      try {
+        await post(`/research/class/${btn.dataset.code}/session/${btn.dataset.sid}/reset`, new URLSearchParams({ reason }).toString());
+        alert('보관 후 초기화가 완료되었습니다.');
+        window.location.reload();
+      } catch (e) {
+        alert(`초기화에 실패했습니다: ${e.message || e}`);
+        btn.textContent = old;
+        btn.disabled = false;
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

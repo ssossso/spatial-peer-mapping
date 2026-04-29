@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="card" style="max-width:980px; text-align:left;">
-  <h2 style="text-align:center; margin:0 0 10px 0;">학생 관리</h2>
+  <h2 style="text-align:center; margin:0 0 10px 0;">학급 정보 수정</h2>
   <div class="muted" style="text-align:center; margin-bottom:14px;">
     학급: <b>{{ cls.name }}</b> · 코드: <b>{{ code }}</b>
   </div>
@@ -65,7 +65,7 @@
               <input type="hidden" name="name" value="{{ s.name }}">
               {% if s.active %}
                 <input type="hidden" name="set" value="0">
-                <button type="submit">전출 처리</button>
+                <button type="submit">참여 목록에서 제외</button>
               {% else %}
                 <input type="hidden" name="set" value="1">
                 <button type="submit">복귀 처리</button>
