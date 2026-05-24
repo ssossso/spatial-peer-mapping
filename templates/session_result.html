@@ -97,18 +97,10 @@
           <option value="">학급 전체</option>
         </select>
       </label>
-      <div class="ai-question-row">
-        <button type="button" class="pill ai-question" data-question-type="overview">전체 요약</button>
-        <button type="button" class="pill ai-question" data-question-type="why_distributed">분산형 설명</button>
-        <button type="button" class="pill ai-question" data-question-type="student_to_peers">이 학생이 바라본 친구들</button>
-        <button type="button" class="pill ai-question" data-question-type="peers_to_student">친구들이 바라본 이 학생</button>
-        <button type="button" class="pill ai-question" data-question-type="asymmetry">서로 다르게 느끼는 관계</button>
-        <button type="button" class="pill ai-question" data-question-type="observation_questions">관찰 질문 추천</button>
-      </div>
     </div>
 
     <div id="aiChatLog" class="ai-chat-log">
-      <div class="ai-message muted-msg">궁금한 내용을 버튼으로 선택해 주세요.</div>
+      <div class="ai-message bot">학생을 선택하면 결과 안에서 더 살펴볼 질문을 제안합니다.</div>
     </div>
   </details>
 
@@ -436,6 +428,15 @@
     cursor: pointer;
     list-style: none;
   }
+  .ai-chat-summary::before {
+    content: "▶";
+    color: #111827;
+    font-size: 12px;
+    margin-right: -6px;
+  }
+  .ai-chat-box[open] .ai-chat-summary::before {
+    content: "▼";
+  }
   .ai-chat-summary::-webkit-details-marker {
     display: none;
   }
@@ -465,14 +466,16 @@
     font-size: 14px;
     background: #fff;
   }
-  .ai-question-row {
+  .ai-suggestions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    margin-top: 2px;
   }
   .ai-question {
     padding: 8px 10px;
     font-size: 13px;
+    font-weight: 850;
   }
   .ai-chat-log {
     display: grid;
@@ -490,9 +493,12 @@
     line-height: 1.55;
     white-space: pre-wrap;
   }
-  .ai-message.question {
+  .ai-message.user {
     background: #eef2ff;
     border-color: #c7d2fe;
+  }
+  .ai-message.bot {
+    background: #fbfbfd;
   }
   .ai-message.muted-msg {
     color: #6b7280;
@@ -648,17 +654,32 @@
   const aiChatLog = document.getElementById('aiChatLog');
   const aiSourceBadge = document.getElementById('aiSourceBadge');
   const aiChatBox = document.querySelector('.ai-chat-box');
-  const aiQuestionButtons = Array.from(document.querySelectorAll('.ai-question'));
   const questionLabels = {
-    overview: '전체 요약',
-    why_distributed: '분산형 설명',
-    student_to_peers: '이 학생이 바라본 친구들',
-    peers_to_student: '친구들이 바라본 이 학생',
-    asymmetry: '서로 다르게 느끼는 관계',
-    cautions: '해석 시 주의점',
-    observation_questions: '관찰 질문 추천'
+    why_type: '왜 이 유형으로 나왔나요?',
+    why_distributed: '왜 이 유형으로 나왔나요?',
+    why_type_basis: '어떤 기준으로 판단했나요?',
+    student_to_peers: '이 학생은 친구들을 어떻게 배치했나요?',
+    student_near_list: '가깝게 둔 친구는 누구인가요?',
+    student_far_list: '멀게 둔 친구가 있나요?',
+    student_spread: '넓게 배치했나요, 모아서 배치했나요?',
+    peers_to_student: '친구들은 이 학생을 어떻게 배치했나요?',
+    peers_near_list: '이 학생을 가깝게 둔 친구는 누구인가요?',
+    peers_far_list: '이 학생을 멀게 둔 친구가 있나요?',
+    mutual_similarity: '이 학생이 본 것과 친구들이 본 것이 비슷한가요?',
+    distance_gap: '거리감 차이가 큰 친구가 있나요?',
+    distance_gap_detail: '어떤 친구와 차이가 컸나요?',
+    distance_gap_largest: '차이가 어떻게 나타났나요?',
+    distance_gap_effect: '이 차이를 결과에 어떻게 반영했나요?',
+    asymmetry: '거리감 차이가 큰 친구가 있나요?'
   };
+  const rootAiQuestions = [
+    { type: 'why_type', label: '왜 이 유형으로 나왔나요?' },
+    { type: 'student_to_peers', label: '이 학생은 친구들을 어떻게 배치했나요?' },
+    { type: 'peers_to_student', label: '친구들은 이 학생을 어떻게 배치했나요?' },
+    { type: 'distance_gap', label: '거리감 차이가 큰 친구가 있나요?' }
+  ];
   let latestPayload = initialPayload || null;
+  let aiInitialized = false;
 
   function text(id, value){
     const el = document.getElementById(id);
@@ -698,12 +719,14 @@
     if (prev && Array.from(aiStudentSelect.options).some(opt => opt.value === prev)) {
       aiStudentSelect.value = prev;
     }
+    if (!aiInitialized) {
+      resetAiConversation();
+      aiInitialized = true;
+    }
   }
 
   function appendAiMessage(textValue, className){
     if (!aiChatLog) return;
-    const firstMuted = aiChatLog.querySelector('.muted-msg');
-    if (firstMuted) firstMuted.remove();
     const div = document.createElement('div');
     div.className = `ai-message ${className || ''}`.trim();
     div.textContent = textValue || '';
@@ -712,15 +735,48 @@
   }
 
   function setAiBusy(on){
-    aiQuestionButtons.forEach(btn => {
+    Array.from(document.querySelectorAll('.ai-question')).forEach(btn => {
       btn.disabled = !!on;
       btn.classList.toggle('is-disabled', !!on);
     });
     if (on && aiSourceBadge) aiSourceBadge.textContent = '생성 중';
   }
 
-  async function askAi(questionType){
-    const needsStudent = ['why_distributed', 'student_to_peers', 'peers_to_student', 'asymmetry'].includes(questionType);
+  function appendAiSuggestions(items){
+    if (!aiChatLog || !items || items.length === 0) return;
+    const old = aiChatLog.querySelectorAll('.ai-suggestions');
+    old.forEach(el => el.remove());
+    const box = document.createElement('div');
+    box.className = 'ai-suggestions';
+    for (const item of items) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pill ai-question';
+      btn.dataset.questionType = item.type;
+      btn.textContent = item.label;
+      btn.addEventListener('click', () => askAi(item.type, item.label));
+      box.appendChild(btn);
+    }
+    aiChatLog.appendChild(box);
+  }
+
+  function resetAiConversation(){
+    if (!aiChatLog) return;
+    aiChatLog.innerHTML = '';
+    const selectedLabel = aiStudentSelect && aiStudentSelect.value
+      ? aiStudentSelect.selectedOptions[0].textContent
+      : '';
+    appendAiMessage(
+      selectedLabel
+        ? `${selectedLabel} 학생에 대해 무엇이 궁금하신가요?`
+        : '먼저 학생을 선택해 주세요.',
+      'bot'
+    );
+    if (selectedLabel) appendAiSuggestions(rootAiQuestions);
+  }
+
+  async function askAi(questionType, explicitLabel){
+    const needsStudent = true;
     const studentId = aiStudentSelect ? aiStudentSelect.value : '';
     const selectedLabel = aiStudentSelect && aiStudentSelect.selectedOptions[0]
       ? aiStudentSelect.selectedOptions[0].textContent
@@ -729,8 +785,8 @@
       alert('이 질문은 먼저 학생을 선택해 주세요.');
       return;
     }
-    const label = questionLabels[questionType] || '질문';
-    appendAiMessage(`${selectedLabel} · ${label}`, 'question');
+    const label = explicitLabel || questionLabels[questionType] || '질문';
+    appendAiMessage(label, 'user');
     setAiBusy(true);
     try {
       const res = await fetch(`/analysis/class/${code}/${sid}/ai_relation_chat.json`, {
@@ -742,7 +798,8 @@
       if (!res.ok || !data.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      appendAiMessage(data.answer || '');
+      appendAiMessage(data.answer || '', 'bot');
+      appendAiSuggestions(data.followups || rootAiQuestions);
       if (aiSourceBadge) aiSourceBadge.textContent = '열림';
     } catch (err) {
       appendAiMessage(`설명을 불러오지 못했습니다.\n${err.message || err}`, 'muted-msg');
@@ -752,9 +809,7 @@
     }
   }
 
-  aiQuestionButtons.forEach(btn => {
-    btn.addEventListener('click', () => askAi(btn.dataset.questionType || 'overview'));
-  });
+  if (aiStudentSelect) aiStudentSelect.addEventListener('change', resetAiConversation);
   if (aiChatBox && aiSourceBadge) {
     aiChatBox.addEventListener('toggle', () => {
       if (!aiChatBox.open) aiSourceBadge.textContent = '열기';
