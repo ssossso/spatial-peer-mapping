@@ -313,6 +313,17 @@ def init_db() -> None:
             """,
         ]))
 
+        # -------------------
+        # Migration v6: class archive + light admin editing
+        # -------------------
+        migrations.append((6, [
+            "ALTER TABLE classes ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE classes ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP;",
+            "ALTER TABLE classes ADD COLUMN IF NOT EXISTS archived_by TEXT;",
+            "ALTER TABLE classes ADD COLUMN IF NOT EXISTS archived_reason TEXT;",
+            "ALTER TABLE classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();",
+        ]))
+
 
 
         migrations.sort(key=lambda x: int(x[0]))
@@ -429,9 +440,11 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
 
     with engine.connect() as conn:
         classes = conn.execute(text("""
-            SELECT code, name, teacher_username, created_at
+            SELECT code, name, teacher_username, created_at,
+                   COALESCE(archived, FALSE) AS archived,
+                   archived_at, archived_by, archived_reason
             FROM classes
-            ORDER BY id DESC
+            ORDER BY COALESCE(archived, FALSE) ASC, id DESC
         """)).fetchall()
 
         out: List[Dict[str, Any]] = []
@@ -509,6 +522,10 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                 "name": c.name,
                 "teacher_username": c.teacher_username,
                 "created_at": c.created_at,
+                "archived": bool(getattr(c, "archived", False)),
+                "archived_at": getattr(c, "archived_at", None),
+                "archived_by": getattr(c, "archived_by", None),
+                "archived_reason": getattr(c, "archived_reason", None),
                 "student_count": int(student_cnt or 0),
                 "sessions": sessions,
             })
@@ -790,6 +807,7 @@ def db_list_classes_for_teacher(teacher_username: str) -> Dict[str, Dict[str, st
             SELECT code, name, teacher_username
             FROM classes
             WHERE teacher_username = :t
+              AND COALESCE(archived, FALSE) = FALSE
             ORDER BY id DESC
         """), {"t": teacher_username}).fetchall()
 
@@ -797,6 +815,57 @@ def db_list_classes_for_teacher(teacher_username: str) -> Dict[str, Dict[str, st
     for r in rows:
         out[r.code] = {"name": r.name, "teacher": r.teacher_username}
     return out
+
+
+def db_update_class_name_admin(class_code: str, new_name: str, updated_by: str) -> bool:
+    """Update only the class display name, leaving student/session data untouched."""
+    if not engine:
+        raise RuntimeError("DB engine not initialized")
+    class_code = (class_code or "").upper().strip()
+    new_name = (new_name or "").strip()
+    if not class_code or not new_name:
+        return False
+    with engine.begin() as conn:
+        res = conn.execute(text("""
+            UPDATE classes
+            SET name = :name,
+                updated_at = NOW()
+            WHERE code = :code
+        """), {"code": class_code, "name": new_name})
+    return bool(res.rowcount)
+
+
+def db_set_class_archived_admin(class_code: str, archived: bool, updated_by: str, reason: str = "") -> bool:
+    """Hide or restore a class without deleting any research data."""
+    if not engine:
+        raise RuntimeError("DB engine not initialized")
+    class_code = (class_code or "").upper().strip()
+    updated_by = (updated_by or "admin").strip()
+    reason = (reason or "").strip()
+    if not class_code:
+        return False
+    with engine.begin() as conn:
+        if archived:
+            res = conn.execute(text("""
+                UPDATE classes
+                SET archived = TRUE,
+                    archived_at = NOW(),
+                    archived_by = :by,
+                    archived_reason = :reason,
+                    updated_at = NOW()
+                WHERE code = :code
+            """), {"code": class_code, "by": updated_by, "reason": reason})
+        else:
+            res = conn.execute(text("""
+                UPDATE classes
+                SET archived = FALSE,
+                    archived_at = NULL,
+                    archived_by = NULL,
+                    archived_reason = NULL,
+                    updated_at = NOW()
+                WHERE code = :code
+            """), {"code": class_code})
+    return bool(res.rowcount)
 
 
 def db_create_class(teacher_username: str, class_code: str, class_name: str, students: List[Dict[str, str]]) -> None:
@@ -2330,6 +2399,43 @@ def research_sync_session_sheet(code: str, sid: str):
     if resp.get("status") != "ok":
         return jsonify({"ok": False, "error": "SHEET_ERROR", "sheet": resp}), 500
     return jsonify({"ok": True, "sheet": resp, "payload": payload})
+
+
+@app.route("/research/class/<code>/rename", methods=["POST"])
+def research_rename_class(code: str):
+    guard = require_admin()
+    if guard is not None:
+        return guard
+    if not engine:
+        return jsonify({"ok": False, "error": "DB_NOT_CONFIGURED"}), 400
+
+    code = (code or "").upper().strip()
+    new_name = (request.form.get("class_name") or "").strip()
+    if not new_name:
+        return jsonify({"ok": False, "error": "학급 이름을 입력해 주세요."}), 400
+
+    ok = db_update_class_name_admin(code, new_name, session.get("teacher") or "admin")
+    if not ok:
+        return jsonify({"ok": False, "error": "학급을 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True, "class_code": code, "class_name": new_name})
+
+
+@app.route("/research/class/<code>/archive", methods=["POST"])
+def research_archive_class(code: str):
+    guard = require_admin()
+    if guard is not None:
+        return guard
+    if not engine:
+        return jsonify({"ok": False, "error": "DB_NOT_CONFIGURED"}), 400
+
+    code = (code or "").upper().strip()
+    archived_raw = (request.form.get("archived") or "1").strip().lower()
+    archived = archived_raw in {"1", "true", "yes", "on"}
+    reason = (request.form.get("reason") or "").strip()
+    ok = db_set_class_archived_admin(code, archived, session.get("teacher") or "admin", reason=reason)
+    if not ok:
+        return jsonify({"ok": False, "error": "학급을 찾을 수 없습니다."}), 404
+    return jsonify({"ok": True, "class_code": code, "archived": archived})
 
 
 @app.route("/research/class/<code>/session/<sid>/reset", methods=["POST"])
