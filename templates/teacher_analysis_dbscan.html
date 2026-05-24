@@ -5,7 +5,7 @@
 <div class="card" style="max-width:980px; text-align:left;">
   <h2 style="margin:0 0 6px 0; text-align:center;">관계 분석 ({{ cls.name }})</h2>
   <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
-    {{ display_sid }}회차 결과 - 밀집 / 경계 / 고립 구조
+    {{ display_sid }}회차 결과 - 밀집형 / 경계형 / 분산형 구조
   </p>
 
   <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:12px;">
@@ -25,15 +25,15 @@
 
       <div id="metrics" style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
         <div class="card" style="padding:10px; margin:0;">
-          <div style="font-weight:950;">밀집</div>
+          <div style="font-weight:950;">밀집형</div>
           <div id="m_dense" style="font-size:22px; font-weight:950;">-</div>
         </div>
         <div class="card" style="padding:10px; margin:0;">
-          <div style="font-weight:950;">경계</div>
+          <div style="font-weight:950;">경계형</div>
           <div id="m_boundary" style="font-size:22px; font-weight:950;">-</div>
         </div>
         <div class="card" style="padding:10px; margin:0;">
-          <div style="font-weight:950;">고립</div>
+          <div style="font-weight:950;">분산형</div>
           <div id="m_isolated" style="font-size:22px; font-weight:950;">-</div>
         </div>
       </div>
@@ -106,7 +106,7 @@
             <button id="k_run" class="btn" type="button" style="padding:8px 12px;">불러오기</button>
 
             <span style="color:#6b7280; font-weight:800; font-size:12px;">
-              이 요약은 참고용입니다. 위의 밀집/경계/고립 구조와 함께 살펴보세요.
+              이 요약은 참고용입니다. 위의 밀집형/경계형/분산형 구조와 함께 살펴보세요.
             </span>
           </div>
 

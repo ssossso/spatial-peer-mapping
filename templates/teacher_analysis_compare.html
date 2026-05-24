@@ -3,7 +3,7 @@
 <div class="card" style="max-width:980px; text-align:left;">
   <h2 style="margin:0 0 6px 0; text-align:center;">회차 비교 분석 ({{ cls.name }})</h2>
   <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
-    회차별 관계 구조 변화 - 밀집 / 경계 / 고립
+    회차별 관계 구조 변화 - 밀집형 / 경계형 / 분산형
   </p>
 
   <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:12px;">
@@ -28,10 +28,10 @@
             <tr style="background:#f8fafc;">
               <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">회차</th>
               <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">참여</th>
-              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">밀집</th>
-              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">경계</th>
-              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">고립</th>
-              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">고립 비율</th>
+              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">밀집형</th>
+              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">경계형</th>
+              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">분산형</th>
+              <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">분산형 비율</th>
               <th style="text-align:right; padding:10px; border-bottom:1px solid #e5e7eb;">집단 수</th>
               <th style="text-align:left; padding:10px; border-bottom:1px solid #e5e7eb;">집단 크기</th>
             </tr>
@@ -81,7 +81,7 @@
     ctx.save();
     ctx.fillStyle = "#111827";
     ctx.font = "14px system-ui";
-    ctx.fillText("고립 비율 변화", 14, 22);
+    ctx.fillText("분산형 비율 변화", 14, 22);
     ctx.restore();
 
     const W = canvas.width;

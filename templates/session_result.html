@@ -13,7 +13,7 @@
       <div class="panel-head">
         <div>
           <div class="section-title">관계 지도</div>
-          <div class="subtitle">학생들이 느낀 거리감을 모아 학급 전체 흐름으로 정리했습니다.</div>
+          <div class="subtitle">학생들이 느낀 거리감을 모아 학급 전체 구조로 정리했습니다.</div>
         </div>
         <span id="generatedAt" class="status">생성 중</span>
       </div>
@@ -21,9 +21,9 @@
       <canvas id="spmCanvas" width="760" height="520" class="map"></canvas>
 
       <div class="legend">
-        <span class="term-tip" data-tip="가까운 흐름 안에 함께 놓인 학생"><b class="dot core"></b>밀집</span>
-        <span class="term-tip" data-tip="여러 흐름 사이에 놓인 학생"><b class="dot boundary"></b>연결</span>
-        <span class="term-tip" data-tip="전체 흐름에서 비교적 떨어져 놓인 학생"><b class="dot outlier"></b>분리</span>
+        <span class="term-tip" data-tip="가까운 관계 영역 안에 함께 놓인 학생"><b class="dot core"></b>밀집형</span>
+        <span class="term-tip" data-tip="여러 관계 영역 사이에 놓인 학생"><b class="dot boundary"></b>경계형</span>
+        <span class="term-tip" data-tip="특정 밀집 영역에 강하게 포함되지 않은 학생"><b class="dot outlier"></b>분산형</span>
       </div>
     </section>
 
@@ -57,15 +57,15 @@
         <div class="section-title">관계 지도 속 위치</div>
         <div class="group-list">
           <div>
-            <b class="term-tip" data-tip="가까운 흐름 안에 함께 놓인 학생">밀집</b>
+            <b class="term-tip" data-tip="가까운 관계 영역 안에 함께 놓인 학생">밀집형</b>
             <div id="coreList" class="chip-list">-</div>
           </div>
           <div>
-            <b class="term-tip" data-tip="여러 흐름 사이에 놓인 학생">연결</b>
+            <b class="term-tip" data-tip="여러 관계 영역 사이에 놓인 학생">경계형</b>
             <div id="boundaryList" class="chip-list">-</div>
           </div>
           <div>
-            <b class="term-tip" data-tip="전체 흐름에서 비교적 떨어져 놓인 학생">분리</b>
+            <b class="term-tip" data-tip="특정 밀집 영역에 강하게 포함되지 않은 학생">분산형</b>
             <div id="outlierList" class="chip-list">-</div>
           </div>
         </div>
@@ -79,7 +79,7 @@
   </details>
 
   <section class="caution-box">
-    <p id="cautionText">참고용 결과입니다. 학생을 평가·진단하지 않으며, 교사의 관찰과 함께 해석해 주세요.</p>
+    <p id="cautionText">이 결과는 학생 개인을 진단하거나 관계 상태를 확정하기 위한 것이 아닙니다. 학생 인식 기반 공간 배치 결과를 바탕으로 학급 관계 구조를 이해하기 위한 참고 자료입니다. 실제 생활지도 판단은 교사의 관찰, 상담, 또래지명 결과 등을 함께 고려하여 이루어져야 합니다.</p>
   </section>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
@@ -713,9 +713,9 @@
     const separated = groupedNames(students, 'outlier').length;
     let msg = '이번 관계 지도에서는 학생들이 함께 놓인 영역들이 보입니다.';
     if (linked > 0 || separated > 0) {
-      msg += ' 영역 사이에 있는 학생이나 조금 떨어진 위치의 학생도 함께 살펴보면, 학급 전체 분위기를 이해하는 데 도움이 됩니다.';
+      msg += ' 영역 사이에 있는 학생이나 특정 밀집 영역에 강하게 포함되지 않은 학생도 함께 살펴보면, 학급 전체 분위기를 이해하는 데 도움이 됩니다.';
     } else {
-      msg += ' 전체 지도에서 크게 떨어져 보이는 위치는 두드러지지 않으며, 함께 놓인 영역을 중심으로 학급 분위기를 살펴볼 수 있습니다.';
+      msg += ' 특정 밀집 영역에 강하게 포함되지 않은 모습은 두드러지지 않으며, 함께 놓인 영역을 중심으로 학급 분위기를 살펴볼 수 있습니다.';
     }
     return msg;
   }
@@ -730,9 +730,9 @@
   }
 
   function statusText(status){
-    if (status === 'core') return '함께 놓인 영역 안쪽';
-    if (status === 'boundary') return '여러 영역 사이';
-    if (status === 'outlier') return '전체 지도에서 조금 떨어진 위치';
+    if (status === 'core') return '밀집형';
+    if (status === 'boundary') return '경계형';
+    if (status === 'outlier') return '분산형';
     return '지도상 위치';
   }
 
@@ -784,8 +784,8 @@
     else if (currClusters < prevClusters) parts.push('함께 놓인 영역이 이전보다 조금 더 모여 보입니다');
     if (currBoundary > prevBoundary) parts.push('여러 영역 사이에 있는 학생이 더 눈에 띕니다');
     else if (currBoundary < prevBoundary) parts.push('여러 영역 사이에 있는 학생은 이전보다 줄어든 모습입니다');
-    if (currOutlier > prevOutlier) parts.push('전체 지도에서 조금 떨어진 위치가 이전보다 더 보입니다');
-    else if (currOutlier < prevOutlier) parts.push('전체 지도에서 조금 떨어진 위치는 이전보다 줄어든 모습입니다');
+    if (currOutlier > prevOutlier) parts.push('분산형으로 나타난 학생이 이전보다 더 보입니다');
+    else if (currOutlier < prevOutlier) parts.push('분산형으로 나타난 학생은 이전보다 줄어든 모습입니다');
 
     summaryEl.textContent = parts.length
       ? `이전 회차와 비교하면, ${parts.join(', ')}.`
@@ -824,7 +824,7 @@
       } else if (item.current.status === 'boundary') {
         phrase = `${item.name} 학생은 여러 영역 사이에 놓인 모습이 이전보다 더 살펴볼 만합니다.`;
       } else if (item.current.status === 'outlier') {
-        phrase = `${item.name} 학생은 전체 지도에서 조금 떨어진 위치가 이전보다 더 눈에 띕니다.`;
+        phrase = `${item.name} 학생은 특정 밀집 영역에 강하게 포함되지 않는 분산형 모습이 이전보다 더 눈에 띕니다.`;
       }
       div.innerHTML = `<b>${item.name}</b><span>${phrase}</span>`;
       list.appendChild(div);
@@ -859,7 +859,7 @@
     text('nClusters', (payload.clusters || []).length);
     text('generatedAt', payload.generated_at ? payload.generated_at.replace('T', ' ').replace('Z', '') : '생성됨');
     text('summaryShort', friendlySummary(payload));
-    text('cautionText', '참고용 결과입니다. 학생을 평가·진단하지 않으며, 교사의 관찰과 함께 해석해 주세요.');
+    text('cautionText', '이 결과는 학생 개인을 진단하거나 관계 상태를 확정하기 위한 것이 아닙니다. 학생 인식 기반 공간 배치 결과를 바탕으로 학급 관계 구조를 이해하기 위한 참고 자료입니다. 실제 생활지도 판단은 교사의 관찰, 상담, 또래지명 결과 등을 함께 고려하여 이루어져야 합니다.');
     chips('coreList', groupedNames(students, 'core'));
     chips('boundaryList', groupedNames(students, 'boundary'));
     chips('outlierList', groupedNames(students, 'outlier'));

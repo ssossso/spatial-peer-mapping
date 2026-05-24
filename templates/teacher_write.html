@@ -146,22 +146,30 @@
   .token {
     user-select: none;
     cursor: grab;
-    padding: 8px 6px;
-    border-radius: 10px;
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    min-height: 56px;
+    padding: 4px;
+    border-radius: 999px;
     border: 1px solid #d1d5db;
     background: #ffffff;
     color: #111827;
     font-weight: 700;
-    font-size: 12.5px;
+    font-size: 13px;
     text-align: center;
+    line-height: 1.1;
+    white-space: normal;
+    overflow: hidden;
     touch-action: none;
     box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .token {
     position: absolute;
-    min-width: 58px;
-    max-width: 120px;
     z-index: 3;
     box-shadow: 0 2px 8px rgba(0,0,0,0.10);
   }
@@ -229,14 +237,22 @@
   const confidenceHidden = document.getElementById('confidence_score');
   const placements = {};
   const tokens = new Map();
+  const TOKEN_SIZE = 56;
   let dragging = null;
 
   function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
   function canvasRect(){ return canvas.getBoundingClientRect(); }
 
   function normalizePlacement(v){
-    if (Array.isArray(v) && v.length >= 2) return { x: Number(v[0]) || 0, y: Number(v[1]) || 0 };
-    if (v && typeof v === 'object') return { x: Number(v.x) || 0, y: Number(v.y) || 0 };
+    if (Array.isArray(v) && v.length >= 2) {
+      return { x: (Number(v[0]) || 0) + TOKEN_SIZE / 2, y: (Number(v[1]) || 0) + TOKEN_SIZE / 2 };
+    }
+    if (v && typeof v === 'object') {
+      const x = Number(v.x) || 0;
+      const y = Number(v.y) || 0;
+      if (v.mode === 'center') return { x, y };
+      return { x: x + TOKEN_SIZE / 2, y: y + TOKEN_SIZE / 2 };
+    }
     return { x: 0, y: 0 };
   }
 
@@ -246,7 +262,7 @@
     if (progressText) progressText.textContent = `배치한 학생: ${count}명 / ${friends.length}명`;
   }
 
-  function placeToken(name, x, y){
+  function placeToken(name, centerX, centerY){
     let token = tokens.get(name);
     if (!token) {
       token = document.createElement('button');
@@ -261,14 +277,22 @@
     }
 
     const rect = canvasRect();
-    const tokenWidth = token.offsetWidth || 70;
-    const tokenHeight = token.offsetHeight || 36;
-    const safeX = clamp(x, 6, rect.width - tokenWidth - 6);
-    const safeY = clamp(y, 6, rect.height - tokenHeight - 6);
+    const tokenWidth = token.offsetWidth || TOKEN_SIZE;
+    const tokenHeight = token.offsetHeight || TOKEN_SIZE;
+    const safeCenterX = clamp(centerX, tokenWidth / 2 + 6, rect.width - tokenWidth / 2 - 6);
+    const safeCenterY = clamp(centerY, tokenHeight / 2 + 6, rect.height - tokenHeight / 2 - 6);
+    const safeX = safeCenterX - tokenWidth / 2;
+    const safeY = safeCenterY - tokenHeight / 2;
 
     token.style.left = `${safeX}px`;
     token.style.top = `${safeY}px`;
-    placements[name] = { x: Math.round(safeX), y: Math.round(safeY) };
+    placements[name] = {
+      x: Math.round(safeCenterX),
+      y: Math.round(safeCenterY),
+      w: Math.round(rect.width),
+      h: Math.round(rect.height),
+      mode: 'center'
+    };
 
     const sourceChip = friendList.querySelector(`[data-name="${CSS.escape(name)}"]`);
     if (sourceChip) sourceChip.style.display = 'none';
@@ -293,8 +317,7 @@
       token.addEventListener('pointerdown', startDrag);
       canvas.appendChild(token);
       tokens.set(name, token);
-      token.style.left = `${Math.max(8, rect.left - cRect.left)}px`;
-      token.style.top = `${Math.max(8, rect.top - cRect.top)}px`;
+      placeToken(name, Math.max(TOKEN_SIZE / 2 + 8, rect.left - cRect.left + TOKEN_SIZE / 2), Math.max(TOKEN_SIZE / 2 + 8, rect.top - cRect.top + TOKEN_SIZE / 2));
     }
 
     const tRect = token.getBoundingClientRect();
@@ -312,9 +335,9 @@
   function moveDrag(e){
     if (!dragging || READONLY) return;
     const rect = canvasRect();
-    const x = e.clientX - rect.left - dragging.offsetX;
-    const y = e.clientY - rect.top - dragging.offsetY;
-    placeToken(dragging.name, x, y);
+    const left = e.clientX - rect.left - dragging.offsetX;
+    const top = e.clientY - rect.top - dragging.offsetY;
+    placeToken(dragging.name, left + dragging.token.offsetWidth / 2, top + dragging.token.offsetHeight / 2);
   }
 
   function endDrag(){ dragging = null; }
