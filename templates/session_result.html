@@ -82,6 +82,38 @@
     <p id="cautionText">이 결과는 학생 개인을 진단하거나 관계 상태를 확정하기 위한 것이 아닙니다. 학생 인식 기반 공간 배치 결과를 바탕으로 학급 관계 구조를 이해하기 위한 참고 자료입니다. 실제 생활지도 판단은 교사의 관찰, 상담, 또래지명 결과 등을 함께 고려하여 이루어져야 합니다.</p>
   </section>
 
+  <section class="ai-chat-box">
+    <div class="panel-head">
+      <div>
+        <div class="section-title">관계 설명 도우미</div>
+        <div class="subtitle">비식별 구조 지표만 사용해 결과 해석을 돕습니다.</div>
+      </div>
+      <span class="status" id="aiSourceBadge">준비됨</span>
+    </div>
+
+    <div class="ai-chat-controls">
+      <label>
+        학생 선택
+        <select id="aiStudentSelect">
+          <option value="">학급 전체</option>
+        </select>
+      </label>
+      <div class="ai-question-row">
+        <button type="button" class="pill ai-question" data-question-type="overview">전체 요약</button>
+        <button type="button" class="pill ai-question" data-question-type="why_distributed">분산형 설명</button>
+        <button type="button" class="pill ai-question" data-question-type="student_to_peers">이 학생이 바라본 친구들</button>
+        <button type="button" class="pill ai-question" data-question-type="peers_to_student">친구들이 바라본 이 학생</button>
+        <button type="button" class="pill ai-question" data-question-type="asymmetry">서로 다르게 느끼는 관계</button>
+        <button type="button" class="pill ai-question" data-question-type="observation_questions">관찰 질문 추천</button>
+      </div>
+    </div>
+
+    <div id="aiChatLog" class="ai-chat-log">
+      <div class="ai-message muted-msg">궁금한 내용을 버튼으로 선택해 주세요.</div>
+    </div>
+    <div class="ai-notice">학생 이름, 학번, PIN, 학교명, 원본 좌표는 OpenAI API로 보내지 않습니다.</div>
+  </section>
+
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     <a class="pill primary" id="backToRoundLink" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
     <button type="button" class="pill primary" id="btnOpenTeacherSurvey">교사 설문 참여</button>
@@ -391,6 +423,74 @@
     padding: 9px 12px;
   }
   .caution-box p { margin: 0; }
+  .ai-chat-box {
+    margin-top: 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    padding: 14px;
+  }
+  .ai-chat-controls {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .ai-chat-controls label {
+    display: grid;
+    gap: 6px;
+    max-width: 260px;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .ai-chat-controls select {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 9px 10px;
+    font: inherit;
+    font-size: 14px;
+    background: #fff;
+  }
+  .ai-question-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ai-question {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .ai-chat-log {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .ai-message {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px 11px;
+    background: #fbfbfd;
+    color: #111827;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .ai-message.question {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+  }
+  .ai-message.muted-msg {
+    color: #6b7280;
+    background: #f8fafc;
+  }
+  .ai-notice {
+    margin-top: 10px;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 700;
+  }
   .survey-box {
     margin-top: 16px;
     border: 1px solid #e5e7eb;
@@ -537,6 +637,20 @@
   const canvas = document.getElementById('spmCanvas');
   const ctx = canvas.getContext('2d');
   const palette = ['#111827', '#4b5563', '#6b7280', '#374151', '#9ca3af', '#1f2937'];
+  const aiStudentSelect = document.getElementById('aiStudentSelect');
+  const aiChatLog = document.getElementById('aiChatLog');
+  const aiSourceBadge = document.getElementById('aiSourceBadge');
+  const aiQuestionButtons = Array.from(document.querySelectorAll('.ai-question'));
+  const questionLabels = {
+    overview: '전체 요약',
+    why_distributed: '분산형 설명',
+    student_to_peers: '이 학생이 바라본 친구들',
+    peers_to_student: '친구들이 바라본 이 학생',
+    asymmetry: '서로 다르게 느끼는 관계',
+    cautions: '해석 시 주의점',
+    observation_questions: '관찰 질문 추천'
+  };
+  let latestPayload = initialPayload || null;
 
   function text(id, value){
     const el = document.getElementById(id);
@@ -558,6 +672,81 @@
       el.appendChild(s);
     }
   }
+
+  function anonStudentId(index){
+    return `S${String(index + 1).padStart(2, '0')}`;
+  }
+
+  function populateAiStudentSelect(students){
+    if (!aiStudentSelect) return;
+    const prev = aiStudentSelect.value;
+    aiStudentSelect.innerHTML = '<option value="">학급 전체</option>';
+    (students || []).forEach((student, idx) => {
+      const opt = document.createElement('option');
+      opt.value = anonStudentId(idx);
+      opt.textContent = `${student.name || anonStudentId(idx)} (${student.status_label || statusText(student.status)})`;
+      aiStudentSelect.appendChild(opt);
+    });
+    if (prev && Array.from(aiStudentSelect.options).some(opt => opt.value === prev)) {
+      aiStudentSelect.value = prev;
+    }
+  }
+
+  function appendAiMessage(textValue, className){
+    if (!aiChatLog) return;
+    const firstMuted = aiChatLog.querySelector('.muted-msg');
+    if (firstMuted) firstMuted.remove();
+    const div = document.createElement('div');
+    div.className = `ai-message ${className || ''}`.trim();
+    div.textContent = textValue || '';
+    aiChatLog.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function setAiBusy(on){
+    aiQuestionButtons.forEach(btn => {
+      btn.disabled = !!on;
+      btn.classList.toggle('is-disabled', !!on);
+    });
+    if (on && aiSourceBadge) aiSourceBadge.textContent = '생성 중';
+  }
+
+  async function askAi(questionType){
+    const needsStudent = ['why_distributed', 'student_to_peers', 'peers_to_student', 'asymmetry'].includes(questionType);
+    const studentId = aiStudentSelect ? aiStudentSelect.value : '';
+    const selectedLabel = aiStudentSelect && aiStudentSelect.selectedOptions[0]
+      ? aiStudentSelect.selectedOptions[0].textContent
+      : '학급 전체';
+    if (needsStudent && !studentId) {
+      alert('이 질문은 먼저 학생을 선택해 주세요.');
+      return;
+    }
+    const label = questionLabels[questionType] || '질문';
+    appendAiMessage(`${selectedLabel} · ${label}`, 'question');
+    setAiBusy(true);
+    try {
+      const res = await fetch(`/analysis/class/${code}/${sid}/ai_relation_chat.json`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question_type: questionType, student_id: studentId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      appendAiMessage(`${data.answer || ''}\n\n${data.notice || ''}`.trim());
+      if (aiSourceBadge) aiSourceBadge.textContent = data.source === 'openai' ? 'OpenAI 응답' : '기본 설명';
+    } catch (err) {
+      appendAiMessage(`설명을 불러오지 못했습니다.\n${err.message || err}`, 'muted-msg');
+      if (aiSourceBadge) aiSourceBadge.textContent = '오류';
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  aiQuestionButtons.forEach(btn => {
+    btn.addEventListener('click', () => askAi(btn.dataset.questionType || 'overview'));
+  });
 
   function clusterColor(cid){
     if (cid === null || cid === undefined || cid < 0) return '#111827';
@@ -854,6 +1043,8 @@
       return;
     }
     const students = payload.students || [];
+    latestPayload = payload;
+    populateAiStudentSelect(students);
     text('nSubmitted', payload.n_submitted ?? '-');
     text('nStudents', payload.n_students ?? '-');
     text('nClusters', (payload.clusters || []).length);
