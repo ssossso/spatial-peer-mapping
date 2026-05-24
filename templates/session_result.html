@@ -82,14 +82,13 @@
     <p id="cautionText">이 결과는 학생 개인을 진단하거나 관계 상태를 확정하기 위한 것이 아닙니다. 학생 인식 기반 공간 배치 결과를 바탕으로 학급 관계 구조를 이해하기 위한 참고 자료입니다. 실제 생활지도 판단은 교사의 관찰, 상담, 또래지명 결과 등을 함께 고려하여 이루어져야 합니다.</p>
   </section>
 
-  <section class="ai-chat-box">
-    <div class="panel-head">
+  <details class="ai-chat-box">
+    <summary class="ai-chat-summary">
       <div>
         <div class="section-title">관계 설명 도우미</div>
-        <div class="subtitle">비식별 구조 지표만 사용해 결과 해석을 돕습니다.</div>
       </div>
-      <span class="status" id="aiSourceBadge">준비됨</span>
-    </div>
+      <span class="status" id="aiSourceBadge">열기</span>
+    </summary>
 
     <div class="ai-chat-controls">
       <label>
@@ -111,8 +110,7 @@
     <div id="aiChatLog" class="ai-chat-log">
       <div class="ai-message muted-msg">궁금한 내용을 버튼으로 선택해 주세요.</div>
     </div>
-    <div class="ai-notice">학생 이름, 학번, PIN, 학교명, 원본 좌표는 OpenAI API로 보내지 않습니다.</div>
-  </section>
+  </details>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     <a class="pill primary" id="backToRoundLink" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
@@ -430,10 +428,25 @@
     background: #fff;
     padding: 14px;
   }
+  .ai-chat-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .ai-chat-summary::-webkit-details-marker {
+    display: none;
+  }
+  .ai-chat-box[open] .ai-chat-summary {
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eef2f7;
+  }
   .ai-chat-controls {
     display: grid;
     gap: 10px;
-    margin-top: 10px;
+    margin-top: 12px;
   }
   .ai-chat-controls label {
     display: grid;
@@ -484,12 +497,6 @@
   .ai-message.muted-msg {
     color: #6b7280;
     background: #f8fafc;
-  }
-  .ai-notice {
-    margin-top: 10px;
-    color: #6b7280;
-    font-size: 12px;
-    font-weight: 700;
   }
   .survey-box {
     margin-top: 16px;
@@ -640,6 +647,7 @@
   const aiStudentSelect = document.getElementById('aiStudentSelect');
   const aiChatLog = document.getElementById('aiChatLog');
   const aiSourceBadge = document.getElementById('aiSourceBadge');
+  const aiChatBox = document.querySelector('.ai-chat-box');
   const aiQuestionButtons = Array.from(document.querySelectorAll('.ai-question'));
   const questionLabels = {
     overview: '전체 요약',
@@ -734,8 +742,8 @@
       if (!res.ok || !data.ok) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      appendAiMessage(`${data.answer || ''}\n\n${data.notice || ''}`.trim());
-      if (aiSourceBadge) aiSourceBadge.textContent = data.source === 'openai' ? 'OpenAI 응답' : '기본 설명';
+      appendAiMessage(data.answer || '');
+      if (aiSourceBadge) aiSourceBadge.textContent = '열림';
     } catch (err) {
       appendAiMessage(`설명을 불러오지 못했습니다.\n${err.message || err}`, 'muted-msg');
       if (aiSourceBadge) aiSourceBadge.textContent = '오류';
@@ -747,6 +755,12 @@
   aiQuestionButtons.forEach(btn => {
     btn.addEventListener('click', () => askAi(btn.dataset.questionType || 'overview'));
   });
+  if (aiChatBox && aiSourceBadge) {
+    aiChatBox.addEventListener('toggle', () => {
+      if (!aiChatBox.open) aiSourceBadge.textContent = '열기';
+      else if (aiSourceBadge.textContent === '열기') aiSourceBadge.textContent = '열림';
+    });
+  }
 
   function clusterColor(cid){
     if (cid === null || cid === undefined || cid < 0) return '#111827';
