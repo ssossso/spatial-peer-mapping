@@ -5238,26 +5238,28 @@ def _fallback_ai_relation_answer(question_type: str, payload: Dict[str, Any]) ->
     boundary = counts.get("boundary", 0)
     distributed = counts.get("distributed", 0)
     asymmetry_count = selected.get("asymmetry_count", 0)
+    student_to = selected.get("student_to_peers_counts") or {}
+    peer_to = selected.get("peers_to_student_counts") or {}
 
     if question_type == "why_distributed" and relation_type == "분산형":
-        possible = "이 학생은 특정 밀집 영역에 강하게 포함되기보다, 여러 학생과 넓고 느슨하게 연결된 구조로 나타났을 수 있습니다."
+        return "이 학생은 밀집 영역의 중심에 포함되지 않고, 여러 친구와의 거리가 중간 이상으로 넓게 나타나 분산형으로 판단되었습니다."
+    if question_type == "student_to_peers":
+        return f"이 학생의 배치에서는 가까움 {student_to.get('near', 0)}명, 중간 {student_to.get('middle', 0)}명, 멀음 {student_to.get('far', 0)}명으로 나타났습니다."
+    if question_type == "peers_to_student":
+        return f"친구들이 이 학생을 배치한 결과는 가까움 {peer_to.get('near', 0)}명, 중간 {peer_to.get('middle', 0)}명, 멀음 {peer_to.get('far', 0)}명입니다."
     elif question_type == "asymmetry":
-        possible = f"서로 다르게 느끼는 배치가 {asymmetry_count}건 확인됩니다. 이는 한쪽의 거리감과 다른 쪽의 거리감이 완전히 같지 않을 수 있음을 뜻합니다."
-    else:
-        possible = f"이번 회차에서는 밀집형 {dense}명, 경계형 {boundary}명, 분산형 {distributed}명으로 요약됩니다."
+        return f"서로 다르게 배치한 관계가 {asymmetry_count}건 확인됩니다. 서로 느낀 거리감이 완전히 같지 않은 짝을 살펴볼 수 있습니다."
+    if question_type == "observation_questions":
+        return "모둠 활동, 쉬는 시간, 자리 이동 뒤 누구와 자연스럽게 함께 있는지 짧게 관찰해 보면 좋습니다."
+    return f"이번 회차는 밀집형 {dense}명, 경계형 {boundary}명, 분산형 {distributed}명으로 요약됩니다. 학급 전체 구조를 중심으로 살펴보세요."
 
-    return (
-        "1. 나타난 결과\n"
-        f"{relation_type} 결과가 확인되었습니다.\n\n"
-        "2. 가능한 해석\n"
-        f"{possible}\n\n"
-        "3. 함께 확인할 데이터\n"
-        "학생이 친구들을 배치한 거리, 친구들이 해당 학생을 배치한 거리, 이전 회차와의 변화를 함께 보는 것이 좋습니다.\n\n"
-        "4. 교사가 관찰하면 좋은 장면\n"
-        "모둠 활동, 쉬는 시간, 자리 이동 후 상호작용처럼 자연스럽게 학생들이 만나는 장면을 살펴보면 도움이 됩니다.\n\n"
-        "5. 해석 시 주의점\n"
-        "이 설명은 관계 상태를 확정하지 않으며, 교사의 관찰과 상담 내용과 함께 참고해야 합니다."
-    )
+
+def _limit_ai_answer(answer: str, limit: int = 200) -> str:
+    """Keep relation helper answers short enough for the result page."""
+    text_value = " ".join(str(answer or "").split())
+    if len(text_value) <= limit:
+        return text_value
+    return text_value[: max(0, limit - 1)].rstrip() + "…"
 
 
 def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tuple[str, str]:
@@ -5268,22 +5270,19 @@ def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tupl
 
     model = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip()
     system_prompt = (
-        "개인정보 없는 학급 관계 구조 지표를 교사용 설명문으로 바꾸는 보조자입니다. "
+        "학급 관계 구조 지표를 교사용 설명문으로 바꾸는 보조자입니다. "
         "학생 개인을 진단하지 않고, 결과를 확정적으로 말하지 않습니다. "
         "분산형은 특정 밀집 영역에 강하게 속하지 않은 구조로 설명합니다. "
         "학생에게 낙인이 될 수 있는 표현은 쓰지 않습니다."
     )
     user_prompt = (
-        "다음 비식별 구조 지표를 바탕으로 교사가 읽기 쉬운 한국어 설명을 작성해 주세요.\n"
-        "답변 구조는 반드시 다음 다섯 항목을 따릅니다.\n"
-        "1. 나타난 결과\n"
-        "2. 가능한 해석\n"
-        "3. 함께 확인할 데이터\n"
-        "4. 교사가 관찰하면 좋은 장면\n"
-        "5. 해석 시 주의점\n"
-        "각 항목은 짧게 작성하고, 학생 이름을 추측하거나 만들지 마세요.\n"
+        "다음 구조 지표를 바탕으로 교사가 읽기 쉬운 한국어 설명을 작성해 주세요.\n"
+        "공백 포함 200자 이내로 답하세요.\n"
+        "문단 번호, 제목, 불필요한 주의 문구는 쓰지 마세요.\n"
+        "왜 그렇게 판단했는지 계산 근거 중심으로 짧게 말하세요.\n"
+        "학생 이름을 추측하거나 만들지 마세요.\n"
         f"질문 유형: {question_type}\n"
-        f"비식별 구조 지표 JSON: {json.dumps(payload, ensure_ascii=False)}"
+        f"구조 지표 JSON: {json.dumps(payload, ensure_ascii=False)}"
     )
     try:
         resp = requests.post(
@@ -5295,7 +5294,7 @@ def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tupl
                     {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
                     {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
                 ],
-                "max_output_tokens": 900,
+                "max_output_tokens": 160,
             },
             timeout=20,
         )
@@ -5311,10 +5310,10 @@ def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tupl
                         chunks.append(str(txt))
             answer = "\n".join(chunks).strip()
         if answer:
-            return answer, "openai"
+            return _limit_ai_answer(answer), "openai"
     except Exception:
         app.logger.exception("privacy-safe relation AI call failed")
-    return _fallback_ai_relation_answer(question_type, payload), "fallback"
+    return _limit_ai_answer(_fallback_ai_relation_answer(question_type, payload)), "fallback"
 
 
 def dbscan_teacher_summary(
@@ -5953,7 +5952,7 @@ def analysis_ai_relation_chat(code, sid):
 
     ai_mode = "openai" if (os.environ.get("OPENAI_API_KEY") or "").strip() else "fallback"
     model_key = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip() if ai_mode == "openai" else "local"
-    cache_key = f"ai_relation_chat_v2_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
+    cache_key = f"ai_relation_chat_v3_short_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
     cached = cache_get(code, sid, cache_key)
     if cached:
         return jsonify(cached)
@@ -5962,8 +5961,8 @@ def analysis_ai_relation_chat(code, sid):
     answer, source = _openai_relation_answer(question_type, privacy_payload)
     out = {
         "ok": True,
-        "answer": answer,
-        "notice": "이 설명은 진단이 아니라 교사의 관계 이해를 돕기 위한 참고 자료입니다.",
+        "answer": _limit_ai_answer(answer),
+        "notice": "",
         "source": source,
     }
     cache_set(code, sid, cache_key, out)
