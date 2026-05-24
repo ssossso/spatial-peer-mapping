@@ -389,6 +389,17 @@ def require_admin():
 
     return None
 
+
+def is_research_admin_user(username: Optional[str]) -> bool:
+    """Return whether this teacher account can use research/admin privileges."""
+    if not username:
+        return False
+    if not ADMIN_USERS:
+        # Matches require_admin(): when ADMIN_USERS is not configured, the
+        # existing app treats any logged-in teacher as the local admin user.
+        return True
+    return str(username) in ADMIN_USERS
+
 # -------------------------
 # Research admin: XLSX helpers + overview fetch
 # -------------------------
@@ -981,6 +992,33 @@ def db_get_class_for_teacher(class_code: str, teacher_username: str) -> Optional
         return {"_forbidden": True}
 
     return {"code": row.code, "name": row.name, "teacher": row.teacher_username, "sessions": {}}
+
+
+def db_get_class_for_viewer(class_code: str, viewer_username: str) -> Optional[Dict[str, Any]]:
+    """Return a class if the viewer is its teacher or a research admin."""
+    if not engine:
+        raise RuntimeError("DB engine not initialized")
+
+    class_code = (class_code or "").upper().strip()
+    if is_research_admin_user(viewer_username):
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT code, name, teacher_username
+                FROM classes
+                WHERE code = :code
+                LIMIT 1
+            """), {"code": class_code}).fetchone()
+        if not row:
+            return None
+        return {
+            "code": row.code,
+            "name": row.name,
+            "teacher": row.teacher_username,
+            "sessions": {},
+            "admin_view": row.teacher_username != viewer_username,
+        }
+
+    return db_get_class_for_teacher(class_code, viewer_username)
 
 
 def db_get_students_in_class(class_code: str) -> List[Dict[str, str]]:
@@ -2749,7 +2787,7 @@ def teacher_manage_students(code: str):
         return redirect("/teacher/login")
 
     code = (code or "").upper().strip()
-    cls = db_get_class_for_teacher(code, session["teacher"])
+    cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
         return "학급을 찾을 수 없거나 접근 권한이 없습니다.", 404
 
@@ -2952,10 +2990,10 @@ def teacher_download_student_pin_pdf(code):
     sid = request.args.get("sid") or DEFAULT_VISIBLE_SESSION_ID
 
     # 권한 확인 + 학급명 확보
-    cls = db_get_class_for_teacher(code, session["teacher"])
+    cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls:
         flash("해당 학급에 접근 권한이 없습니다.", "error")
-        return redirect(url_for("teacher_home"))
+        return redirect("/teacher/dashboard")
 
     class_name = cls.get("name") or code
 
@@ -2998,6 +3036,7 @@ def class_detail_v2(code):
         return "학급을 찾을 수 없거나 접근 권한이 없습니다.", 404
 
     cls = ensure_class_schema(cls)
+    class_teacher_username = cls.get("teacher") or session["teacher"]
 
     students = db_get_students_in_class(code)
     cls["students"] = students
@@ -3017,7 +3056,7 @@ def class_detail_v2(code):
                   AND teacher_username = :t
                 ORDER BY id DESC
                 LIMIT 1
-            """), {"code": code, "sid": sid, "t": session["teacher"]}).fetchone()
+            """), {"code": code, "sid": sid, "t": class_teacher_username}).fetchone()
 
         if r:
             teacher_run = {"id": int(r.id), "submitted": bool(r.submitted)}
@@ -3183,10 +3222,22 @@ def _require_teacher() -> Optional[str]:
 
 def _require_class_access(code: str, teacher_username: str) -> Optional[Dict[str, Any]]:
     code = (code or "").upper().strip()
-    cls = db_get_class_for_teacher(code, teacher_username)
+    cls = db_get_class_for_viewer(code, teacher_username)
     if not cls or cls.get("_forbidden"):
         return None
     return ensure_class_schema(cls)
+
+
+def _class_owner_username(cls: Dict[str, Any], fallback_username: str) -> str:
+    """Return the class owner's username for state lookups."""
+    return str(cls.get("teacher") or fallback_username)
+
+
+def _deny_admin_write_if_needed(cls: Dict[str, Any]) -> Optional[Any]:
+    """Keep research-admin cross-class access read-only on teacher workflow APIs."""
+    if cls.get("admin_view"):
+        return jsonify({"ok": False, "error": "ADMIN_VIEW_READ_ONLY"}), 403
+    return None
 
 
 @app.route("/api/v2/class/<code>/session/<sid>/state")
@@ -3214,7 +3265,7 @@ def api_v2_state(code: str, sid: str):
         if not bool(submitted_map.get(name, False)):
             incomplete.append(name)
 
-    state = db_get_session_state_v2(code, sid, t)
+    state = db_get_session_state_v2(code, sid, _class_owner_username(cls, t))
     state["ok"] = True
     state["incomplete_students"] = incomplete
     return jsonify(state)
@@ -3233,6 +3284,9 @@ def api_v2_preview_seen(code: str, sid: str):
     cls = _require_class_access(code, t)
     if not cls:
         return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+    denied = _deny_admin_write_if_needed(cls)
+    if denied is not None:
+        return denied
 
     db_set_preview_seen_v2(code, sid, t)
     return jsonify({"ok": True, "preview_seen": True})
@@ -3251,6 +3305,9 @@ def api_v2_exclusions(code: str, sid: str):
     cls = _require_class_access(code, t)
     if not cls:
         return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+    denied = _deny_admin_write_if_needed(cls)
+    if denied is not None:
+        return denied
 
     payload = request.get_json(silent=True) or {}
     mode = (payload.get("mode") or "").strip()
@@ -3290,6 +3347,9 @@ def api_v2_remove_exclusion(code: str, sid: str):
     cls = _require_class_access(code, t)
     if not cls:
         return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+    denied = _deny_admin_write_if_needed(cls)
+    if denied is not None:
+        return denied
 
     payload = request.get_json(silent=True) or {}
     student_name = (payload.get("student_name") or "").strip()
@@ -3314,6 +3374,9 @@ def api_v2_survey(code: str, sid: str):
     cls = _require_class_access(code, t)
     if not cls:
         return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+    denied = _deny_admin_write_if_needed(cls)
+    if denied is not None:
+        return denied
 
     payload = request.get_json(silent=True) or {}
     db_upsert_survey_v2(code, sid, t, payload)
@@ -3361,6 +3424,9 @@ def api_v2_finalize(code: str, sid: str):
     cls = _require_class_access(code, t)
     if not cls:
         return jsonify({"ok": False, "error": "FORBIDDEN"}), 403
+    denied = _deny_admin_write_if_needed(cls)
+    if denied is not None:
+        return denied
 
     res = db_finalize_session_v2(code, sid, t)
     if not res.get("ok"):
@@ -3386,10 +3452,11 @@ def teacher_session_result(code: str, sid: str):
     if sid not in ["1", "2", "3", "4"]:
         sid = "1"
 
-    cls = db_get_class_for_teacher(code, session["teacher"])
+    cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
         return "학급을 찾을 수 없거나 접근 권한이 없습니다.", 404
     cls = ensure_class_schema(cls)
+    class_teacher_username = _class_owner_username(cls, session["teacher"])
 
     students = db_get_students_in_class(code)
     submitted_map = db_get_submitted_map(code, sid)
@@ -3411,10 +3478,10 @@ def teacher_session_result(code: str, sid: str):
                 SELECT 1 FROM teacher_placement_runs
                 WHERE class_code=:code AND teacher_username=:t AND session_id=:sid
                 LIMIT 1
-            """), {"code": code, "t": session["teacher"], "sid": sid}).fetchone()
+            """), {"code": code, "t": class_teacher_username, "sid": sid}).fetchone()
             teacher_has = bool(r)
 
-    state = db_get_session_state_v2(code, sid, session["teacher"])
+    state = db_get_session_state_v2(code, sid, class_teacher_username)
     spm_payload = None
     spm_error = None
     try:
@@ -5800,7 +5867,7 @@ def analysis_spm_result(code, sid):
     if sid not in ["1", "2", "3", "4", "5"]:
         sid = "1"
 
-    cls = db_get_class_for_teacher(code, session["teacher"])
+    cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
@@ -5827,7 +5894,7 @@ def analysis_privacy_relation_payload(code, sid):
     if sid not in ["1", "2", "3", "4", "5"]:
         sid = "1"
 
-    cls = db_get_class_for_teacher(code, session["teacher"])
+    cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
@@ -5846,7 +5913,7 @@ def analysis_ai_relation_chat(code, sid):
     if sid not in ["1", "2", "3", "4", "5"]:
         sid = "1"
 
-    cls = db_get_class_for_teacher(code, session["teacher"])
+    cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
