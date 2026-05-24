@@ -5249,8 +5249,6 @@ def _fallback_ai_relation_answer(question_type: str, payload: Dict[str, Any]) ->
         return f"친구들이 이 학생을 배치한 결과는 가까움 {peer_to.get('near', 0)}명, 중간 {peer_to.get('middle', 0)}명, 멀음 {peer_to.get('far', 0)}명입니다."
     elif question_type == "asymmetry":
         return f"서로 다르게 배치한 관계가 {asymmetry_count}건 확인됩니다. 서로 느낀 거리감이 완전히 같지 않은 짝을 살펴볼 수 있습니다."
-    if question_type == "observation_questions":
-        return "모둠 활동, 쉬는 시간, 자리 이동 뒤 누구와 자연스럽게 함께 있는지 짧게 관찰해 보면 좋습니다."
     return f"이번 회차는 밀집형 {dense}명, 경계형 {boundary}명, 분산형 {distributed}명으로 요약됩니다. 학급 전체 구조를 중심으로 살펴보세요."
 
 
@@ -5260,6 +5258,152 @@ def _limit_ai_answer(answer: str, limit: int = 200) -> str:
     if len(text_value) <= limit:
         return text_value
     return text_value[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _join_names_short(names: List[str], limit: int = 6) -> str:
+    """Format a short list of student names for teacher-visible answers."""
+    clean = [str(n).strip() for n in names if str(n).strip()]
+    if not clean:
+        return "없음"
+    shown = clean[:limit]
+    extra = len(clean) - len(shown)
+    suffix = f" 외 {extra}명" if extra > 0 else ""
+    return ", ".join(shown) + suffix
+
+
+def _visible_relation_context(class_code: str, sid: str, student_id: str, privacy_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Build teacher-visible name context from anonymized relation payload."""
+    result = build_spm_result_payload(class_code, sid)
+    names = [str(s.get("name") or "") for s in (result.get("students") or []) if str(s.get("name") or "")]
+    anon = _anon_id_map(names)
+    id_to_name = {aid: name for name, aid in anon.items()}
+    students_by_name = {str(s.get("name") or ""): s for s in (result.get("students") or [])}
+    selected_id = (student_id or "").strip().upper()
+    selected_name = id_to_name.get(selected_id, "")
+    selected = privacy_payload.get("selected_student") or {}
+
+    def _ids_to_names(ids: List[str]) -> List[str]:
+        return [id_to_name.get(str(x), str(x)) for x in (ids or [])]
+
+    student_to = selected.get("student_to_peers") or {}
+    peers_to = selected.get("peers_to_student") or {}
+    asymmetry = []
+    for item in selected.get("asymmetry") or []:
+        peer_id = str(item.get("peer_id") or "")
+        asymmetry.append({
+            "peer_name": id_to_name.get(peer_id, peer_id),
+            "student_to_peer": item.get("student_to_peer") or "",
+            "peer_to_student": item.get("peer_to_student") or "",
+        })
+
+    return {
+        "selected_id": selected_id,
+        "selected_name": selected_name,
+        "relation_type": selected.get("relation_type") or _relation_type_from_status(str((students_by_name.get(selected_name) or {}).get("status") or "")),
+        "student_to": {
+            "near": _ids_to_names(student_to.get("near") or []),
+            "middle": _ids_to_names(student_to.get("middle") or []),
+            "far": _ids_to_names(student_to.get("far") or []),
+        },
+        "peers_to": {
+            "near": _ids_to_names(peers_to.get("near") or []),
+            "middle": _ids_to_names(peers_to.get("middle") or []),
+            "far": _ids_to_names(peers_to.get("far") or []),
+        },
+        "student_to_counts": selected.get("student_to_peers_counts") or {},
+        "peers_to_counts": selected.get("peers_to_student_counts") or {},
+        "asymmetry_count": int(selected.get("asymmetry_count") or 0),
+        "asymmetry": asymmetry,
+        "counts": privacy_payload.get("counts") or {},
+    }
+
+
+def _relation_chat_followups(question_type: str) -> List[Dict[str, str]]:
+    """Return next suggested questions for the relation helper."""
+    followups = {
+        "why_type": [
+            {"type": "why_type_basis", "label": "어떤 기준으로 판단했나요?"},
+            {"type": "peers_to_student", "label": "친구들이 본 결과도 비슷한가요?"},
+            {"type": "distance_gap", "label": "거리감 차이가 큰 친구가 있나요?"},
+        ],
+        "why_distributed": [
+            {"type": "why_type_basis", "label": "어떤 기준으로 판단했나요?"},
+            {"type": "peers_to_student", "label": "친구들이 본 결과도 비슷한가요?"},
+            {"type": "distance_gap", "label": "거리감 차이가 큰 친구가 있나요?"},
+        ],
+        "student_to_peers": [
+            {"type": "student_near_list", "label": "가깝게 둔 친구는 누구인가요?"},
+            {"type": "student_far_list", "label": "멀게 둔 친구가 있나요?"},
+            {"type": "student_spread", "label": "넓게 배치했나요, 모아서 배치했나요?"},
+        ],
+        "peers_to_student": [
+            {"type": "peers_near_list", "label": "이 학생을 가깝게 둔 친구는 누구인가요?"},
+            {"type": "peers_far_list", "label": "이 학생을 멀게 둔 친구가 있나요?"},
+            {"type": "mutual_similarity", "label": "이 학생이 본 것과 비슷한가요?"},
+        ],
+        "distance_gap": [
+            {"type": "distance_gap_detail", "label": "어떤 친구와 차이가 컸나요?"},
+            {"type": "distance_gap_largest", "label": "차이가 어떻게 나타났나요?"},
+            {"type": "distance_gap_effect", "label": "이 차이를 결과에 어떻게 반영했나요?"},
+        ],
+        "asymmetry": [
+            {"type": "distance_gap_detail", "label": "어떤 친구와 차이가 컸나요?"},
+            {"type": "distance_gap_largest", "label": "차이가 어떻게 나타났나요?"},
+            {"type": "distance_gap_effect", "label": "이 차이를 결과에 어떻게 반영했나요?"},
+        ],
+    }
+    return followups.get(question_type, [
+        {"type": "why_type", "label": "왜 이 유형으로 나왔나요?"},
+        {"type": "student_to_peers", "label": "이 학생은 친구들을 어떻게 배치했나요?"},
+        {"type": "peers_to_student", "label": "친구들은 이 학생을 어떻게 배치했나요?"},
+        {"type": "distance_gap", "label": "거리감 차이가 큰 친구가 있나요?"},
+    ])
+
+
+def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
+    """Answer relation-helper questions from app data, keeping names local."""
+    name = ctx.get("selected_name") or "이 학생"
+    rel = ctx.get("relation_type") or "자료 부족"
+    st = ctx.get("student_to_counts") or {}
+    pt = ctx.get("peers_to_counts") or {}
+    counts = ctx.get("counts") or {}
+    gap_count = int(ctx.get("asymmetry_count") or 0)
+    gaps = ctx.get("asymmetry") or []
+
+    if question_type in {"why_type", "why_distributed"}:
+        if rel == "분산형":
+            return "이 학생은 밀집 영역의 중심에 포함되지 않고, 여러 친구와의 거리가 중간 이상으로 넓게 나타나 분산형으로 판단되었습니다."
+        return f"{name} 학생은 관계 지도에서 {rel}으로 나타났습니다. 주변 학생들과의 최종 거리와 영역 안쪽 포함 여부를 함께 반영한 결과입니다."
+    if question_type == "why_type_basis":
+        return "직접 배치 거리, 친구들이 본 거리, 다른 학생을 배치한 패턴을 함께 섞어 최종 거리를 만들고, 그 지도에서 밀집 영역 포함 정도를 봅니다."
+    if question_type == "student_to_peers":
+        return f"이 학생의 배치에서는 가까움 {st.get('near', 0)}명, 중간 {st.get('middle', 0)}명, 멀음 {st.get('far', 0)}명으로 나타났습니다."
+    if question_type == "student_near_list":
+        return f"가깝게 배치한 친구는 {_join_names_short(ctx['student_to'].get('near', []))}입니다."
+    if question_type == "student_far_list":
+        return f"멀게 배치한 친구는 {_join_names_short(ctx['student_to'].get('far', []))}입니다."
+    if question_type == "student_spread":
+        return f"가까움 {st.get('near', 0)}명, 중간 {st.get('middle', 0)}명, 멀음 {st.get('far', 0)}명으로, 이 학생의 배치가 얼마나 모였는지 볼 수 있습니다."
+    if question_type == "peers_to_student":
+        return f"친구들이 이 학생을 배치한 결과는 가까움 {pt.get('near', 0)}명, 중간 {pt.get('middle', 0)}명, 멀음 {pt.get('far', 0)}명입니다."
+    if question_type == "peers_near_list":
+        return f"이 학생을 가깝게 배치한 친구는 {_join_names_short(ctx['peers_to'].get('near', []))}입니다."
+    if question_type == "peers_far_list":
+        return f"이 학생을 멀게 배치한 친구는 {_join_names_short(ctx['peers_to'].get('far', []))}입니다."
+    if question_type == "mutual_similarity":
+        if gap_count == 0:
+            return "이 학생이 본 거리감과 친구들이 본 거리감의 단계 차이는 크게 확인되지 않았습니다."
+        return f"서로의 거리감 단계가 다르게 나타난 배치가 {gap_count}건 있어, 일부 친구와는 인식 차이를 따로 볼 수 있습니다."
+    if question_type in {"distance_gap", "asymmetry"}:
+        return f"서로의 거리감 단계가 다르게 나타난 배치가 {gap_count}건 있습니다."
+    if question_type in {"distance_gap_detail", "distance_gap_largest"}:
+        if not gaps:
+            return "거리감 단계가 다르게 나타난 친구는 확인되지 않았습니다."
+        parts = [f"{g['peer_name']}: 이 학생→{g['student_to_peer']}, 친구→{g['peer_to_student']}" for g in gaps[:3]]
+        return " / ".join(parts)
+    if question_type == "distance_gap_effect":
+        return "이 차이는 한쪽 응답만으로 판단하지 않고, 양방향 직접 거리와 다른 학생 배치 패턴을 섞은 최종 거리 계산에 함께 반영됩니다."
+    return f"이번 회차는 밀집형 {counts.get('dense', 0)}명, 경계형 {counts.get('boundary', 0)}명, 분산형 {counts.get('distributed', 0)}명으로 요약됩니다."
 
 
 def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tuple[str, str]:
@@ -5937,12 +6081,23 @@ def analysis_ai_relation_chat(code, sid):
     question_type = (body.get("question_type") or "overview").strip()
     allowed_questions = {
         "overview",
+        "why_type",
         "why_distributed",
+        "why_type_basis",
         "student_to_peers",
+        "student_near_list",
+        "student_far_list",
+        "student_spread",
         "peers_to_student",
+        "peers_near_list",
+        "peers_far_list",
+        "mutual_similarity",
+        "distance_gap",
+        "distance_gap_detail",
+        "distance_gap_largest",
+        "distance_gap_effect",
         "asymmetry",
         "cautions",
-        "observation_questions",
     }
     if question_type not in allowed_questions:
         question_type = "overview"
@@ -5950,20 +6105,27 @@ def analysis_ai_relation_chat(code, sid):
     if student_id and not (student_id.startswith("S") and student_id[1:].isdigit()):
         student_id = ""
 
-    ai_mode = "openai" if (os.environ.get("OPENAI_API_KEY") or "").strip() else "fallback"
+    local_question = question_type != "overview"
+    ai_mode = "local" if local_question else ("openai" if (os.environ.get("OPENAI_API_KEY") or "").strip() else "fallback")
     model_key = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip() if ai_mode == "openai" else "local"
-    cache_key = f"ai_relation_chat_v3_short_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
+    cache_key = f"ai_relation_chat_v4_flow_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
     cached = cache_get(code, sid, cache_key)
     if cached:
         return jsonify(cached)
 
     privacy_payload = build_privacy_safe_relation_payload(code, sid, student_id=student_id or None)
-    answer, source = _openai_relation_answer(question_type, privacy_payload)
+    if local_question:
+        ctx = _visible_relation_context(code, sid, student_id, privacy_payload)
+        answer = _relation_chat_local_answer(question_type, ctx)
+        source = "local"
+    else:
+        answer, source = _openai_relation_answer(question_type, privacy_payload)
     out = {
         "ok": True,
         "answer": _limit_ai_answer(answer),
         "notice": "",
         "source": source,
+        "followups": _relation_chat_followups(question_type),
     }
     cache_set(code, sid, cache_key, out)
     return jsonify(out)
