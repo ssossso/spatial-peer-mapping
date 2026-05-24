@@ -6,6 +6,7 @@
       <h2>연구/관리 대시보드</h2>
       <p>학급별 진행 상태를 확인하고, 연구용 구글 시트에 요약 데이터를 저장합니다.</p>
       <p class="archive-note">초기화 시 데이터는 보관됩니다.</p>
+      <p class="archive-note">숨김 처리한 학급은 일반 학급 목록에서 보이지 않지만, 연구 데이터는 삭제되지 않습니다.</p>
     </div>
   </header>
 
@@ -19,10 +20,13 @@
         {% for c in overview %}
           <button
             type="button"
-            class="class-item {% if loop.first %}active{% endif %}"
+            class="class-item {% if c.archived %}archived{% endif %} {% if loop.first %}active{% endif %}"
             data-class-code="{{ c.code }}"
           >
-            <span class="class-title">{{ c.name }}</span>
+            <span class="class-title">
+              {{ c.name }}
+              {% if c.archived %}<em class="state-badge">숨김</em>{% endif %}
+            </span>
             <span class="class-meta">{{ c.code }} · {{ c.teacher_username }}</span>
             <span class="class-meta">학생 {{ c.student_count }}명</span>
           </button>
@@ -34,10 +38,37 @@
           <article class="detail-card {% if loop.first %}active{% endif %}" data-detail-code="{{ c.code }}">
             <div class="detail-top">
               <div>
-                <h3>{{ c.name }}</h3>
+                <h3>
+                  <span data-class-name-display="{{ c.code }}">{{ c.name }}</span>
+                  {% if c.archived %}<em class="state-badge">숨김 처리됨</em>{% endif %}
+                </h3>
                 <p>{{ c.code }} · {{ c.teacher_username }} · 학생 {{ c.student_count }}명</p>
+                {% if c.archived %}
+                  <p class="archive-state">
+                    일반 학급 목록에서 숨겨진 상태입니다.
+                    {% if c.archived_reason %}사유: {{ c.archived_reason }}{% endif %}
+                  </p>
+                {% endif %}
               </div>
-              <a class="btn" href="/teacher/class/{{ c.code }}/students">학급 정보 수정</a>
+              <a class="btn" href="/teacher/class/{{ c.code }}">학급 페이지</a>
+            </div>
+
+            <div class="class-admin-panel">
+              <form class="rename-form" data-rename-class data-code="{{ c.code }}">
+                <label>
+                  학급 이름
+                  <input type="text" name="class_name" value="{{ c.name }}" maxlength="80" required>
+                </label>
+                <button type="submit" class="btn">이름 저장</button>
+              </form>
+
+              <div class="archive-actions">
+                {% if c.archived %}
+                  <button type="button" class="btn" data-archive-class data-code="{{ c.code }}" data-archived="0" data-label="{{ c.name }}">숨김 해제</button>
+                {% else %}
+                  <button type="button" class="btn danger" data-archive-class data-code="{{ c.code }}" data-archived="1" data-label="{{ c.name }}">학급 숨김</button>
+                {% endif %}
+              </div>
             </div>
 
             <div class="session-list">
@@ -173,9 +204,27 @@
     background: #f6f8ff;
     border-color: #c7d2fe;
   }
+  .class-item.archived {
+    background: #f3f4f6;
+    color: #4b5563;
+  }
   .class-title {
     display: block;
     font-weight: 950;
+  }
+  .state-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 900;
+    vertical-align: middle;
   }
   .class-meta {
     display: block;
@@ -193,6 +242,49 @@
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 12px;
+  }
+  .archive-state {
+    color: #4b5563;
+    font-weight: 900;
+  }
+  .class-admin-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fbfbfd;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .rename-form {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    flex: 1;
+  }
+  .rename-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    flex: 1;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .rename-form input {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 9px 10px;
+    font: inherit;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  .archive-actions {
+    display: flex;
+    gap: 8px;
   }
   .session-list {
     display: grid;
@@ -306,8 +398,11 @@
       grid-template-columns: 1fr;
     }
     .session-card summary,
-    .detail-top {
+    .detail-top,
+    .class-admin-panel,
+    .rename-form {
       flex-direction: column;
+      align-items: stretch;
     }
   }
 </style>
@@ -351,6 +446,63 @@
         alert(`구글 시트 저장에 실패했습니다: ${e.message || e}`);
         btn.textContent = old;
         btn.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-rename-class]').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = form.dataset.code;
+      const input = form.querySelector('input[name="class_name"]');
+      const name = (input && input.value || '').trim();
+      if (!name) {
+        alert('학급 이름을 입력해 주세요.');
+        return;
+      }
+      const btn = form.querySelector('button[type="submit"]');
+      const old = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '저장 중...';
+      }
+      try {
+        await post(`/research/class/${code}/rename`, new URLSearchParams({ class_name: name }).toString());
+        alert('학급 이름이 저장되었습니다.');
+        window.location.reload();
+      } catch (err) {
+        alert(`학급 이름 저장에 실패했습니다: ${err.message || err}`);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-archive-class]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const code = btn.dataset.code;
+      const label = btn.dataset.label || code;
+      const archived = btn.dataset.archived === '1';
+      const ok = confirm(
+        archived
+          ? `${label} 학급을 숨김 처리하시겠습니까?\n\n학생과 결과 데이터는 삭제되지 않고 연구 관리 화면에 계속 보관됩니다.`
+          : `${label} 학급의 숨김을 해제하시겠습니까?`
+      );
+      if (!ok) return;
+      const reason = archived ? (prompt('숨김 처리 사유를 적어 주세요. 비워두어도 됩니다.') || '') : '';
+      const old = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = archived ? '숨김 처리 중...' : '복원 중...';
+      try {
+        await post(`/research/class/${code}/archive`, new URLSearchParams({ archived: archived ? '1' : '0', reason }).toString());
+        alert(archived ? '학급이 숨김 처리되었습니다.' : '학급 숨김이 해제되었습니다.');
+        window.location.reload();
+      } catch (err) {
+        alert(`처리에 실패했습니다: ${err.message || err}`);
+        btn.disabled = false;
+        btn.textContent = old;
       }
     });
   });

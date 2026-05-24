@@ -146,17 +146,17 @@
   .token {
     user-select: none;
     cursor: grab;
-    width: 56px;
-    height: 56px;
-    min-width: 56px;
-    min-height: 56px;
-    padding: 4px;
+    width: 45px;
+    height: 45px;
+    min-width: 45px;
+    min-height: 45px;
+    padding: 3px;
     border-radius: 999px;
     border: 1px solid #d1d5db;
     background: #ffffff;
     color: #111827;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 11.5px;
     text-align: center;
     line-height: 1.1;
     white-space: normal;
@@ -237,7 +237,8 @@
   const confidenceHidden = document.getElementById('confidence_score');
   const placements = {};
   const tokens = new Map();
-  const TOKEN_SIZE = 56;
+  const TOKEN_SIZE = 45;
+  const LEGACY_TOKEN_SIZE = 56;
   let dragging = null;
 
   function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
@@ -245,13 +246,13 @@
 
   function normalizePlacement(v){
     if (Array.isArray(v) && v.length >= 2) {
-      return { x: (Number(v[0]) || 0) + TOKEN_SIZE / 2, y: (Number(v[1]) || 0) + TOKEN_SIZE / 2 };
+      return { x: (Number(v[0]) || 0) + LEGACY_TOKEN_SIZE / 2, y: (Number(v[1]) || 0) + LEGACY_TOKEN_SIZE / 2 };
     }
     if (v && typeof v === 'object') {
       const x = Number(v.x) || 0;
       const y = Number(v.y) || 0;
       if (v.mode === 'center') return { x, y };
-      return { x: x + TOKEN_SIZE / 2, y: y + TOKEN_SIZE / 2 };
+      return { x: x + LEGACY_TOKEN_SIZE / 2, y: y + LEGACY_TOKEN_SIZE / 2 };
     }
     return { x: 0, y: 0 };
   }
