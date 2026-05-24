@@ -2125,7 +2125,7 @@ def health():
 
 @app.route("/")
 def home():
-    # 로그인 유지 중이면 home -> dashboard 흐름으로 고정
+    # 로그인 유지 중이면 home -> dashboard 이동으로 고정
     if session.get("teacher"):
         return redirect("/teacher/dashboard")
 
@@ -2248,7 +2248,7 @@ def teacher_login():
                 session["teacher"] = username
 
                 # 바로 dashboard로 보내지 않고 home으로 보냄
-                # (주소 흐름: home -> dashboard)
+                # (주소 이동: home -> dashboard)
                 return redirect("/")
 
             return render_template("teacher_login.html", error="로그인 실패: 비밀번호 불일치")
@@ -4658,6 +4658,7 @@ def build_spm_result_payload(class_code: str, sid: str, alpha: float = 0.6, beta
             "students": [],
             "clusters": [],
             "outliers": [],
+            "distributed": [],
             "boundaries": [],
             "distance_matrix": {"names": [], "values": []},
             "diagnostics": {"missing_count": 0},
@@ -4791,15 +4792,15 @@ def build_spm_result_payload(class_code: str, sid: str, alpha: float = 0.6, beta
             status_label = "자료 부족"
         elif label == -1:
             status = "outlier"
-            status_label = "비교적 떨어진 위치"
+            status_label = "분산형"
             outliers.append(nm)
         elif is_core[i]:
             status = "core"
-            status_label = "밀집"
+            status_label = "밀집형"
             cluster_members.setdefault(label, []).append(nm)
         else:
             status = "boundary"
-            status_label = "경계"
+            status_label = "경계형"
             boundaries.append(nm)
             cluster_members.setdefault(label, []).append(nm)
 
@@ -4850,6 +4851,7 @@ def build_spm_result_payload(class_code: str, sid: str, alpha: float = 0.6, beta
         "students": student_rows,
         "clusters": clusters,
         "outliers": outliers,
+        "distributed": outliers,
         "boundaries": boundaries,
         "distance_matrix": {
             "names": names,
@@ -4906,20 +4908,223 @@ def spm_result_summary(n_students: int, n_submitted: int, cluster_count: int, bo
     elif n_submitted <= 0:
         short = "아직 제출된 학생 배치 데이터가 없어 관계 구조를 생성하지 않았습니다."
     elif n_submitted < 3:
-        short = "제출 학생 수가 적어 DBSCAN 구조 분석은 참고 수준으로만 표시됩니다."
+        short = "제출 학생 수가 적어 관계 지도 요약은 참고 수준으로만 표시됩니다."
     else:
         parts = [f"이번 회차에서는 학생 인식상 {cluster_count}개의 밀집된 관계 영역이 나타났습니다."]
         if boundary_count > 0:
             parts.append(f"{boundary_count}명의 학생은 여러 관계 영역 사이의 경계 위치에 가깝게 나타났습니다.")
         if outlier_names:
-            parts.append(f"{len(outlier_names)}명의 학생은 전체 관계 지도에서 비교적 떨어진 위치에 배치되었습니다.")
+            parts.append(f"{len(outlier_names)}명의 학생은 특정 밀집 영역에 강하게 포함되지 않는 분산형으로 나타났습니다.")
         short = " ".join(parts)
 
     return {
         "short": short,
         "structure": "이 결과는 직접 거리와 제3자 배치 패턴을 함께 반영한 학급 전체 관계 구조 요약입니다.",
-        "cautions": "본 결과는 학생 관계의 원인을 단독으로 설명하거나 개별 학생을 평가·진단하지 않습니다. 반드시 교사의 관찰, 상담 내용, 학급 맥락과 함께 해석해야 합니다.",
+        "cautions": "이 결과는 학생 개인을 진단하거나 관계 상태를 확정하기 위한 것이 아닙니다. 학생 인식 기반 공간 배치 결과를 바탕으로 학급 관계 구조를 이해하기 위한 참고 자료입니다. 실제 생활지도 판단은 교사의 관찰, 상담, 또래지명 결과 등을 함께 고려하여 이루어져야 합니다.",
     }
+
+
+def _anon_id_map(names: List[str]) -> Dict[str, str]:
+    """Map student names to stable anonymous IDs for external explanation APIs."""
+    return {name: f"S{i + 1:02d}" for i, name in enumerate(names)}
+
+
+def _distance_bucket(value: Optional[float]) -> Optional[str]:
+    """Convert a normalized distance into an easy teacher-facing level."""
+    if not _is_finite_number(value):
+        return None
+    v = max(0.0, min(1.0, float(value)))
+    if v <= 0.33:
+        return "가까움"
+    if v <= 0.66:
+        return "중간"
+    return "멀음"
+
+
+def _relation_type_from_status(status: str) -> str:
+    """Convert internal DBSCAN status into non-stigmatizing wording."""
+    if status == "core":
+        return "밀집형"
+    if status == "boundary":
+        return "경계형"
+    if status == "outlier":
+        return "분산형"
+    return "자료 부족"
+
+
+def build_privacy_safe_relation_payload(class_code: str, sid: str, student_id: Optional[str] = None) -> Dict[str, Any]:
+    """Build an anonymized relation payload that is safe to send to an AI API."""
+    result = build_spm_result_payload(class_code, sid)
+    students = result.get("students") or []
+    names = [str(s.get("name") or "") for s in students if str(s.get("name") or "")]
+    anon = _anon_id_map(names)
+
+    dense_count = sum(1 for s in students if s.get("status") == "core")
+    boundary_count = sum(1 for s in students if s.get("status") == "boundary")
+    distributed_count = sum(1 for s in students if s.get("status") == "outlier")
+    cluster_count = len(result.get("clusters") or [])
+    n_students = int(result.get("n_students") or 0)
+    n_submitted = int(result.get("n_submitted") or 0)
+    overall_density = round(dense_count / n_students, 4) if n_students else 0.0
+
+    payload: Dict[str, Any] = {
+        "ok": bool(result.get("ok")),
+        "session_id": str(sid),
+        "n_students": n_students,
+        "n_submitted": n_submitted,
+        "counts": {
+            "dense": dense_count,
+            "boundary": boundary_count,
+            "distributed": distributed_count,
+            "cluster_count": cluster_count,
+        },
+        "overall_density": overall_density,
+        "summary": {
+            "short": result.get("summary", {}).get("short", ""),
+            "cautions": result.get("summary", {}).get("cautions", ""),
+        },
+    }
+
+    selected_name: Optional[str] = None
+    if student_id:
+        sid_upper = str(student_id).strip().upper()
+        for nm, aid in anon.items():
+            if aid == sid_upper:
+                selected_name = nm
+                break
+
+    if selected_name and selected_name in names:
+        idx = names.index(selected_name)
+        selected_row = next((s for s in students if s.get("name") == selected_name), {})
+        submitted = db_list_submitted_student_sessions(class_code, sid)
+        respondent_maps: Dict[str, List[List[Optional[float]]]] = {}
+        for item in submitted:
+            respondent = (item.get("student_name") or "").strip()
+            if respondent not in names:
+                continue
+            pts, valid = _respondent_points(names, respondent, item.get("placements") or {})
+            respondent_maps[respondent] = distance_matrix(pts, valid)
+
+        def _direction_bucket(respondent: str, i: int, j: int) -> Optional[str]:
+            M = respondent_maps.get(respondent)
+            if not M or i >= len(M) or j >= len(M[i]) or not _is_finite_number(M[i][j]):
+                return None
+            return _distance_bucket(float(M[i][j]) / math.sqrt(2.0))
+
+        student_to_peers = {"near": [], "middle": [], "far": []}
+        peers_to_student = {"near": [], "middle": [], "far": []}
+        asymmetry: List[Dict[str, str]] = []
+        for peer_idx, peer_name in enumerate(names):
+            if peer_name == selected_name:
+                continue
+            peer_id = anon[peer_name]
+            a = _direction_bucket(selected_name, idx, peer_idx)
+            b = _direction_bucket(peer_name, peer_idx, idx)
+
+            if a == "가까움":
+                student_to_peers["near"].append(peer_id)
+            elif a == "중간":
+                student_to_peers["middle"].append(peer_id)
+            elif a == "멀음":
+                student_to_peers["far"].append(peer_id)
+
+            if b == "가까움":
+                peers_to_student["near"].append(peer_id)
+            elif b == "중간":
+                peers_to_student["middle"].append(peer_id)
+            elif b == "멀음":
+                peers_to_student["far"].append(peer_id)
+
+            if a and b and a != b:
+                asymmetry.append({
+                    "peer_id": peer_id,
+                    "student_to_peer": a,
+                    "peer_to_student": b,
+                })
+
+        payload["selected_student"] = {
+            "student_id": anon[selected_name],
+            "relation_type": _relation_type_from_status(str(selected_row.get("status") or "")),
+            "student_to_peers_counts": {k: len(v) for k, v in student_to_peers.items()},
+            "peers_to_student_counts": {k: len(v) for k, v in peers_to_student.items()},
+            "student_to_peers": student_to_peers,
+            "peers_to_student": peers_to_student,
+            "asymmetry_count": len(asymmetry),
+            "asymmetry": asymmetry[:8],
+        }
+
+    return payload
+
+
+def _fallback_ai_relation_answer(question_type: str, payload: Dict[str, Any]) -> str:
+    """Return a local AI-style explanation when OpenAI is not configured."""
+    selected = payload.get("selected_student") or {}
+    relation_type = selected.get("relation_type") or "학급 전체"
+    counts = payload.get("counts") or {}
+    dense = counts.get("dense", 0)
+    boundary = counts.get("boundary", 0)
+    distributed = counts.get("distributed", 0)
+    asymmetry_count = selected.get("asymmetry_count", 0)
+
+    if question_type == "why_distributed" and relation_type == "분산형":
+        possible = "이 학생은 특정 밀집 영역에 강하게 포함되기보다, 여러 학생과 넓고 느슨하게 연결된 구조로 나타났을 수 있습니다."
+    elif question_type == "asymmetry":
+        possible = f"서로 다르게 느끼는 배치가 {asymmetry_count}건 확인됩니다. 이는 한쪽의 거리감과 다른 쪽의 거리감이 완전히 같지 않을 수 있음을 뜻합니다."
+    else:
+        possible = f"이번 회차에서는 밀집형 {dense}명, 경계형 {boundary}명, 분산형 {distributed}명으로 요약됩니다."
+
+    return (
+        "1. 나타난 결과\n"
+        f"{relation_type} 결과가 확인되었습니다.\n\n"
+        "2. 가능한 해석\n"
+        f"{possible}\n\n"
+        "3. 함께 확인할 데이터\n"
+        "학생이 친구들을 배치한 거리, 친구들이 해당 학생을 배치한 거리, 이전 회차와의 변화를 함께 보는 것이 좋습니다.\n\n"
+        "4. 교사가 관찰하면 좋은 장면\n"
+        "모둠 활동, 쉬는 시간, 자리 이동 후 상호작용처럼 자연스럽게 학생들이 만나는 장면을 살펴보면 도움이 됩니다.\n\n"
+        "5. 해석 시 주의점\n"
+        "이 설명은 관계 상태를 확정하지 않으며, 교사의 관찰과 상담 내용과 함께 참고해야 합니다."
+    )
+
+
+def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tuple[str, str]:
+    """Generate a privacy-safe teacher explanation, falling back locally if needed."""
+    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not api_key:
+        return _fallback_ai_relation_answer(question_type, payload), "fallback"
+
+    model = (os.environ.get("OPENAI_MODEL") or "gpt-4o-mini").strip()
+    prompt = (
+        "너는 교사가 학급 관계 지도를 조심스럽게 해석하도록 돕는 보조 설명자다.\n"
+        "학생 개인을 진단하지 말고, 결과를 확정적으로 말하지 마라.\n"
+        "분산형은 특정 밀집 집단에 강하게 속하지 않은 구조로 설명한다.\n"
+        "학생에게 낙인이 될 수 있는 표현은 쓰지 않는다.\n"
+        "답변 구조는 반드시 다음 다섯 항목을 따른다: 1. 나타난 결과 2. 가능한 해석 3. 함께 확인할 데이터 4. 교사가 관찰하면 좋은 장면 5. 해석 시 주의점.\n"
+        f"질문 유형: {question_type}\n"
+        f"비식별 구조 지표 JSON: {json.dumps(payload, ensure_ascii=False)}"
+    )
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "개인정보 없는 구조 지표를 교사용 설명문으로 바꾸는 보조자입니다."},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.2,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        answer = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        if answer:
+            return answer, "openai"
+    except Exception:
+        app.logger.exception("privacy-safe relation AI call failed")
+    return _fallback_ai_relation_answer(question_type, payload), "fallback"
 
 
 def dbscan_teacher_summary(
@@ -4959,20 +5164,20 @@ def dbscan_teacher_summary(
     largest_cluster_ratio = (max(cluster_sizes) / n_total) if cluster_sizes else 0.0
 
     structure_summary = (
-        f"이번 회차에서는 밀집 {dense_count}명, 경계 {boundary_count}명, 고립 {isolated_count}명으로 나타났습니다."
+        f"이번 회차에서는 밀집형 {dense_count}명, 경계형 {boundary_count}명, 분산형 {isolated_count}명으로 나타났습니다."
     )
 
     note = "이 결과는 학생 인식 기반 배치에 따른 구조 요약이며, 개별 관계를 확정하지 않습니다."
 
-    # 우선순위: A(고립) > C(쏠림) > B(경계) > D(분산) > none
-    # A: 고립 신호
+    # 우선순위: A(분산형) > C(쏠림) > B(경계) > D(분산) > none
+    # A: 분산형 신호
     if (isolated_ratio >= 0.15) or (isolated_count >= 3):
         return {
             "structure_summary": structure_summary,
-            "key_signal": "고립으로 표시된 학생이 상대적으로 많아, 일부 학생의 관계 경험을 한 번 살펴볼 필요가 있어 보입니다.",
+            "key_signal": "분산형으로 나타난 학생이 상대적으로 많아, 특정 밀집 영역에 강하게 포함되지 않는 관계 양상을 함께 살펴볼 필요가 있어 보입니다.",
             "reflection_prompt": "해당 학생들의 최근 교내외 활동 변화나 학교생활 경험을 함께 떠올려 보는 것 어떨까요?",
             "note": note,
-            "rule": "A_isolated",
+            "rule": "A_distributed",
         }
 
     # C: 한 집단 쏠림
@@ -4999,7 +5204,7 @@ def dbscan_teacher_summary(
     if (cluster_count >= 3) and (largest_cluster_ratio < 0.45):
         return {
             "structure_summary": structure_summary,
-            "key_signal": "관계가 여러 흐름으로 나뉘어 형성되어 있는 모습이 관찰됩니다.",
+            "key_signal": "관계가 여러 영역으로 나뉘어 형성되어 있는 모습이 관찰됩니다.",
             "reflection_prompt": "집단 간 교류가 자연스럽게 이루어질 수 있는 경험이 있었는지 떠올려 보는 것 어떨까요?",
             "note": note,
             "rule": "D_multi_flow",
@@ -5066,25 +5271,25 @@ def dbscan_change_summary(prev_counts: dict, curr_counts: dict) -> dict:
 
     change_summary = "이전 회차와 비교할 때, 학급 내 관계 구조에 일부 변화가 관찰됩니다."
 
-    # 우선순위: 고립 변화 > 경계 변화 > 중심 쏠림 변화 > 분산/수렴 > 미미
-    # A: 고립 증가/감소
+    # 우선순위: 분산형 변화 > 경계 변화 > 중심 쏠림 변화 > 분산/수렴 > 미미
+    # A: 분산형 증가/감소
     if (d_isolated >= 2) or ((d_isolated / prev_n) >= 0.10):
         return {
             "change_summary": change_summary,
-            "change_signal": "고립으로 표시된 학생의 수가 이전 회차보다 증가한 것으로 나타났습니다.",
+            "change_signal": "분산형으로 나타난 학생의 수가 이전 회차보다 증가한 것으로 나타났습니다.",
             "reflection_prompt": "최근 교내외 활동 변화나 학교생활 경험의 변화가 있었는지 함께 떠올려 보는 것 어떨까요?",
             "note": note,
-            "rule": "A_isolated_up",
+            "rule": "A_distributed_up",
             "delta": {"dense": d_dense, "boundary": d_boundary, "isolated": d_isolated},
         }
 
     if (d_isolated <= -2) or ((d_isolated / prev_n) <= -0.10):
         return {
             "change_summary": change_summary,
-            "change_signal": "고립으로 표시된 학생의 수가 이전 회차보다 줄어든 것으로 보입니다.",
+            "change_signal": "분산형으로 나타난 학생의 수가 이전 회차보다 줄어든 것으로 보입니다.",
             "reflection_prompt": "이러한 변화가 어떤 경험이나 상호작용과 함께 나타났는지 돌아보는 것도 의미가 있을 수 있습니다.",
             "note": note,
-            "rule": "A_isolated_down",
+            "rule": "A_distributed_down",
             "delta": {"dense": d_dense, "boundary": d_boundary, "isolated": d_isolated},
         }
 
@@ -5124,7 +5329,7 @@ def dbscan_change_summary(prev_counts: dict, curr_counts: dict) -> dict:
     if curr_cluster_count >= prev_cluster_count + 1:
         return {
             "change_summary": change_summary,
-            "change_signal": "관계 구조가 이전 회차보다 여러 흐름으로 분산된 모습이 관찰됩니다.",
+            "change_signal": "관계 구조가 이전 회차보다 여러 영역으로 분산된 모습이 관찰됩니다.",
             "reflection_prompt": "집단 간 교류 경험이 어떻게 형성되고 있었는지 떠올려 보는 것 어떨까요?",
             "note": note,
             "rule": "D_more_flows",
@@ -5504,6 +5709,73 @@ def analysis_spm_result(code, sid):
     payload = build_spm_result_payload(code, sid)
     cache_set(code, sid, cache_key, payload)
     return jsonify(payload)
+
+
+@app.route("/analysis/class/<code>/<sid>/privacy_relation_payload.json")
+def analysis_privacy_relation_payload(code, sid):
+    if "teacher" not in session:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    code = (code or "").upper().strip()
+    sid = (sid or "1").strip()
+    if sid not in ["1", "2", "3", "4", "5"]:
+        sid = "1"
+
+    cls = db_get_class_for_teacher(code, session["teacher"])
+    if not cls or cls.get("_forbidden"):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    student_id = (request.args.get("student_id") or "").strip().upper() or None
+    payload = build_privacy_safe_relation_payload(code, sid, student_id=student_id)
+    return jsonify(payload)
+
+
+@app.route("/analysis/class/<code>/<sid>/ai_relation_chat.json", methods=["POST"])
+def analysis_ai_relation_chat(code, sid):
+    if "teacher" not in session:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+
+    code = (code or "").upper().strip()
+    sid = (sid or "1").strip()
+    if sid not in ["1", "2", "3", "4", "5"]:
+        sid = "1"
+
+    cls = db_get_class_for_teacher(code, session["teacher"])
+    if not cls or cls.get("_forbidden"):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    body = request.get_json(silent=True) or {}
+    question_type = (body.get("question_type") or "overview").strip()
+    allowed_questions = {
+        "overview",
+        "why_distributed",
+        "student_to_peers",
+        "peers_to_student",
+        "asymmetry",
+        "cautions",
+        "observation_questions",
+    }
+    if question_type not in allowed_questions:
+        question_type = "overview"
+    student_id = (body.get("student_id") or "").strip().upper()
+    if student_id and not (student_id.startswith("S") and student_id[1:].isdigit()):
+        student_id = ""
+
+    cache_key = f"ai_relation_chat_v1_{sid}_{student_id or 'class'}_{question_type}"
+    cached = cache_get(code, sid, cache_key)
+    if cached:
+        return jsonify(cached)
+
+    privacy_payload = build_privacy_safe_relation_payload(code, sid, student_id=student_id or None)
+    answer, source = _openai_relation_answer(question_type, privacy_payload)
+    out = {
+        "ok": True,
+        "answer": answer,
+        "notice": "이 설명은 진단이 아니라 교사의 관계 이해를 돕기 위한 참고 자료입니다.",
+        "source": source,
+    }
+    cache_set(code, sid, cache_key, out)
+    return jsonify(out)
 
 
 @app.route("/analysis/class/<code>/<sid>/dbscan_structure.json")
