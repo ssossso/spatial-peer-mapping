@@ -5266,33 +5266,50 @@ def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tupl
     if not api_key:
         return _fallback_ai_relation_answer(question_type, payload), "fallback"
 
-    model = (os.environ.get("OPENAI_MODEL") or "gpt-4o-mini").strip()
-    prompt = (
-        "너는 교사가 학급 관계 지도를 조심스럽게 해석하도록 돕는 보조 설명자다.\n"
-        "학생 개인을 진단하지 말고, 결과를 확정적으로 말하지 마라.\n"
-        "분산형은 특정 밀집 집단에 강하게 속하지 않은 구조로 설명한다.\n"
-        "학생에게 낙인이 될 수 있는 표현은 쓰지 않는다.\n"
-        "답변 구조는 반드시 다음 다섯 항목을 따른다: 1. 나타난 결과 2. 가능한 해석 3. 함께 확인할 데이터 4. 교사가 관찰하면 좋은 장면 5. 해석 시 주의점.\n"
+    model = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip()
+    system_prompt = (
+        "개인정보 없는 학급 관계 구조 지표를 교사용 설명문으로 바꾸는 보조자입니다. "
+        "학생 개인을 진단하지 않고, 결과를 확정적으로 말하지 않습니다. "
+        "분산형은 특정 밀집 영역에 강하게 속하지 않은 구조로 설명합니다. "
+        "학생에게 낙인이 될 수 있는 표현은 쓰지 않습니다."
+    )
+    user_prompt = (
+        "다음 비식별 구조 지표를 바탕으로 교사가 읽기 쉬운 한국어 설명을 작성해 주세요.\n"
+        "답변 구조는 반드시 다음 다섯 항목을 따릅니다.\n"
+        "1. 나타난 결과\n"
+        "2. 가능한 해석\n"
+        "3. 함께 확인할 데이터\n"
+        "4. 교사가 관찰하면 좋은 장면\n"
+        "5. 해석 시 주의점\n"
+        "각 항목은 짧게 작성하고, 학생 이름을 추측하거나 만들지 마세요.\n"
         f"질문 유형: {question_type}\n"
         f"비식별 구조 지표 JSON: {json.dumps(payload, ensure_ascii=False)}"
     )
     try:
         resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/responses",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": model,
-                "messages": [
-                    {"role": "system", "content": "개인정보 없는 구조 지표를 교사용 설명문으로 바꾸는 보조자입니다."},
-                    {"role": "user", "content": prompt},
+                "input": [
+                    {"role": "system", "content": [{"type": "input_text", "text": system_prompt}]},
+                    {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]},
                 ],
-                "temperature": 0.2,
+                "max_output_tokens": 900,
             },
             timeout=20,
         )
         resp.raise_for_status()
         data = resp.json()
-        answer = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        answer = (data.get("output_text") or "").strip()
+        if not answer:
+            chunks: List[str] = []
+            for item in data.get("output") or []:
+                for content in item.get("content") or []:
+                    txt = content.get("text") or ""
+                    if txt:
+                        chunks.append(str(txt))
+            answer = "\n".join(chunks).strip()
         if answer:
             return answer, "openai"
     except Exception:
@@ -5934,7 +5951,9 @@ def analysis_ai_relation_chat(code, sid):
     if student_id and not (student_id.startswith("S") and student_id[1:].isdigit()):
         student_id = ""
 
-    cache_key = f"ai_relation_chat_v1_{sid}_{student_id or 'class'}_{question_type}"
+    ai_mode = "openai" if (os.environ.get("OPENAI_API_KEY") or "").strip() else "fallback"
+    model_key = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip() if ai_mode == "openai" else "local"
+    cache_key = f"ai_relation_chat_v2_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
     cached = cache_get(code, sid, cache_key)
     if cached:
         return jsonify(cached)
