@@ -31,7 +31,9 @@
 
     <div class="measure-layout">
       <div>
-        <div id="canvas" class="map-canvas"></div>
+        <div id="canvas" class="map-canvas">
+          <div id="clusterFogLayer" class="cluster-fog-layer" aria-hidden="true"></div>
+        </div>
         <div class="muted" style="margin-top:8px; font-size:12px; display:block;">
           방향은 상관없고 학생 사이의 거리만 생각해 배치해 주세요.
         </div>
@@ -120,6 +122,22 @@
     touch-action: none;
   }
 
+  .cluster-fog-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .placement-fog {
+    position: absolute;
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at center, rgba(74,108,247,var(--fog-alpha, 0.16)), rgba(74,108,247,0) 72%);
+    filter: blur(2px);
+    transform: translateZ(0);
+  }
+
   .friend-panel {
     border: 1px solid #e5e7eb;
     border-radius: 12px;
@@ -172,6 +190,14 @@
     position: absolute;
     z-index: 3;
     box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  }
+
+  .drag-ghost {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 8px 18px rgba(15,23,42,0.18);
+    transform: scale(1.02);
   }
 
   .status {
@@ -230,6 +256,7 @@
   const initialPlacements = {{ placements|tojson }};
 
   const canvas = document.getElementById('canvas');
+  const clusterFogLayer = document.getElementById('clusterFogLayer');
   const friendList = document.getElementById('friendList');
   const placementsInput = document.getElementById('placements_json');
   const progressText = document.getElementById('progressText');
@@ -243,6 +270,27 @@
 
   function clamp(v, min, max){ return Math.min(Math.max(v, min), max); }
   function canvasRect(){ return canvas.getBoundingClientRect(); }
+
+  function isPointInsideCanvas(clientX, clientY){
+    const rect = canvasRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  function createDragGhost(source, e){
+    const ghost = source.cloneNode(true);
+    ghost.className = 'token drag-ghost';
+    ghost.disabled = true;
+    ghost.style.width = `${TOKEN_SIZE}px`;
+    ghost.style.height = `${TOKEN_SIZE}px`;
+    document.body.appendChild(ghost);
+    updateDragGhost(ghost, e.clientX - source.getBoundingClientRect().left, e.clientY - source.getBoundingClientRect().top, e);
+    return ghost;
+  }
+
+  function updateDragGhost(ghost, offsetX, offsetY, e){
+    ghost.style.left = `${e.clientX - offsetX}px`;
+    ghost.style.top = `${e.clientY - offsetY}px`;
+  }
 
   function normalizePlacement(v){
     if (Array.isArray(v) && v.length >= 2) {
@@ -261,6 +309,56 @@
     if (placementsInput) placementsInput.value = JSON.stringify(placements);
     const count = Object.keys(placements).length;
     if (progressText) progressText.textContent = `배치한 학생: ${count}명 / ${friends.length}명`;
+  }
+
+  function updatePlacementFog(){
+    if (!clusterFogLayer) return;
+    clusterFogLayer.innerHTML = '';
+    const points = Object.entries(placements)
+      .map(([name, p]) => ({ name, x: Number(p.x), y: Number(p.y) }))
+      .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+    if (points.length < 2) return;
+
+    const threshold = Math.max(64, TOKEN_SIZE * 1.75);
+    const seen = new Set();
+    const groups = [];
+    for (const p of points) {
+      if (seen.has(p.name)) continue;
+      const group = [];
+      const queue = [p];
+      seen.add(p.name);
+      while (queue.length) {
+        const cur = queue.shift();
+        group.push(cur);
+        for (const other of points) {
+          if (seen.has(other.name)) continue;
+          const d = Math.hypot(cur.x - other.x, cur.y - other.y);
+          if (d <= threshold) {
+            seen.add(other.name);
+            queue.push(other);
+          }
+        }
+      }
+      if (group.length >= 2) groups.push(group);
+    }
+
+    for (const group of groups) {
+      const xs = group.map(p => p.x);
+      const ys = group.map(p => p.y);
+      const pad = 32 + Math.min(24, group.length * 5);
+      const minX = Math.min(...xs) - pad;
+      const maxX = Math.max(...xs) + pad;
+      const minY = Math.min(...ys) - pad;
+      const maxY = Math.max(...ys) + pad;
+      const fog = document.createElement('div');
+      fog.className = 'placement-fog';
+      fog.style.left = `${minX}px`;
+      fog.style.top = `${minY}px`;
+      fog.style.width = `${Math.max(80, maxX - minX)}px`;
+      fog.style.height = `${Math.max(80, maxY - minY)}px`;
+      fog.style.setProperty('--fog-alpha', String(Math.min(0.28, 0.11 + group.length * 0.035)));
+      clusterFogLayer.appendChild(fog);
+    }
   }
 
   function placeToken(name, centerX, centerY){
@@ -299,6 +397,7 @@
     if (sourceChip) sourceChip.style.display = 'none';
 
     updateHidden();
+    updatePlacementFog();
   }
 
   function startDrag(e){
@@ -306,19 +405,23 @@
     const source = e.currentTarget;
     const name = source.dataset.name;
     const rect = source.getBoundingClientRect();
-    const cRect = canvasRect();
+    const fromList = source.classList.contains('chip');
 
     let token = tokens.get(name);
-    if (!token) {
-      token = document.createElement('button');
-      token.type = 'button';
-      token.className = 'token';
-      token.dataset.name = name;
-      token.textContent = name;
-      token.addEventListener('pointerdown', startDrag);
-      canvas.appendChild(token);
-      tokens.set(name, token);
-      placeToken(name, Math.max(TOKEN_SIZE / 2 + 8, rect.left - cRect.left + TOKEN_SIZE / 2), Math.max(TOKEN_SIZE / 2 + 8, rect.top - cRect.top + TOKEN_SIZE / 2));
+    if (fromList && !token) {
+      const offsetX = e.clientX - rect.left;
+      const offsetY = e.clientY - rect.top;
+      dragging = {
+        name,
+        token: null,
+        ghost: createDragGhost(source, e),
+        offsetX,
+        offsetY,
+        fromList: true
+      };
+      source.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+      return;
     }
 
     const tRect = token.getBoundingClientRect();
@@ -335,13 +438,31 @@
 
   function moveDrag(e){
     if (!dragging || READONLY) return;
+    if (dragging.ghost) {
+      updateDragGhost(dragging.ghost, dragging.offsetX, dragging.offsetY, e);
+      return;
+    }
     const rect = canvasRect();
     const left = e.clientX - rect.left - dragging.offsetX;
     const top = e.clientY - rect.top - dragging.offsetY;
     placeToken(dragging.name, left + dragging.token.offsetWidth / 2, top + dragging.token.offsetHeight / 2);
   }
 
-  function endDrag(){ dragging = null; }
+  function endDrag(e){
+    if (dragging && dragging.ghost) {
+      if (e && isPointInsideCanvas(e.clientX, e.clientY)) {
+        const gRect = dragging.ghost.getBoundingClientRect();
+        const cRect = canvasRect();
+        placeToken(
+          dragging.name,
+          gRect.left + gRect.width / 2 - cRect.left,
+          gRect.top + gRect.height / 2 - cRect.top
+        );
+      }
+      dragging.ghost.remove();
+    }
+    dragging = null;
+  }
 
   friendList.querySelectorAll('.chip').forEach(chip => {
     chip.disabled = READONLY;
@@ -359,6 +480,8 @@
   });
 
   updateHidden();
+  updatePlacementFog();
+  window.addEventListener('resize', updatePlacementFog);
 
   if (confidenceSlider && confidenceHidden) {
     confidenceSlider.addEventListener('input', () => {
