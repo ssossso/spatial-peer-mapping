@@ -685,6 +685,10 @@
   const aiFreeQuestion = document.getElementById('aiFreeQuestion');
   const aiFreeAsk = document.getElementById('aiFreeAsk');
   const questionLabels = {
+    class_summary: '학급 전체를 요약해 주세요',
+    class_counts: '유형별 인원은 어떻게 되나요?',
+    class_areas: '함께 놓인 영역은 몇 개인가요?',
+    class_participation: '참여 학생 수는 충분한가요?',
     why_type: '왜 이 유형으로 나왔나요?',
     why_distributed: '왜 이 유형으로 나왔나요?',
     why_type_basis: '어떤 기준으로 판단했나요?',
@@ -702,7 +706,13 @@
     distance_gap_effect: '이 차이를 결과에 어떻게 반영했나요?',
     asymmetry: '거리감 차이가 큰 친구가 있나요?'
   };
-  const rootAiQuestions = [
+  const classAiQuestions = [
+    { type: 'class_summary', label: '학급 전체를 요약해 주세요' },
+    { type: 'class_counts', label: '유형별 인원은 어떻게 되나요?' },
+    { type: 'class_areas', label: '함께 놓인 영역은 몇 개인가요?' },
+    { type: 'class_participation', label: '참여 학생 수는 충분한가요?' }
+  ];
+  const studentAiQuestions = [
     { type: 'why_type', label: '왜 이 유형으로 나왔나요?' },
     { type: 'student_to_peers', label: '이 학생은 친구들을 어떻게 배치했나요?' },
     { type: 'peers_to_student', label: '친구들은 이 학생을 어떻게 배치했나요?' },
@@ -805,14 +815,16 @@
     appendAiMessage(
       selectedLabel
         ? `${selectedLabel} 학생에 대해 궁금한 점을 물어보세요.`
-        : '먼저 학생을 선택해 주세요.',
+        : '학급 전체에 대해 궁금한 점을 물어보세요.',
       'bot'
     );
-    if (selectedLabel) appendAiSuggestions(rootAiQuestions);
+    appendAiSuggestions(selectedLabel ? studentAiQuestions : classAiQuestions);
   }
 
   async function sendAiRequest(payload, displayQuestion){
-    const needsStudent = true;
+    const classQuestionTypes = ['overview', 'class_summary', 'class_counts', 'class_areas', 'class_participation'];
+    const questionType = payload && payload.question_type ? payload.question_type : '';
+    const needsStudent = !!questionType && !classQuestionTypes.includes(questionType);
     const studentId = aiStudentSelect ? aiStudentSelect.value : '';
     if (needsStudent && !studentId) {
       alert('먼저 학생을 선택해 주세요.');
@@ -832,7 +844,7 @@
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       appendAiMessage(data.answer || '', 'bot');
-      appendAiSuggestions(data.followups || rootAiQuestions);
+      appendAiSuggestions(data.followups || (studentId ? studentAiQuestions : classAiQuestions));
     } catch (err) {
       appendAiMessage(`설명을 불러오지 못했습니다.\n${err.message || err}`, 'muted-msg');
     } finally {
