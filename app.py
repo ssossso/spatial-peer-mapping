@@ -5379,17 +5379,17 @@ def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
     if question_type == "student_to_peers":
         return f"이 학생의 배치에서는 가까움 {st.get('near', 0)}명, 중간 {st.get('middle', 0)}명, 멀음 {st.get('far', 0)}명으로 나타났습니다."
     if question_type == "student_near_list":
-        return f"가깝게 배치한 친구는 {_join_names_short(ctx['student_to'].get('near', []))}입니다."
+        return f"{name} 학생이 가까움 범위에 배치한 친구는 {_join_names_short(ctx['student_to'].get('near', []))}입니다. 배치 결과 기준입니다."
     if question_type == "student_far_list":
-        return f"멀게 배치한 친구는 {_join_names_short(ctx['student_to'].get('far', []))}입니다."
+        return f"{name} 학생이 멀리 배치한 친구는 {_join_names_short(ctx['student_to'].get('far', []))}입니다. 배치 결과 기준입니다."
     if question_type == "student_spread":
         return f"가까움 {st.get('near', 0)}명, 중간 {st.get('middle', 0)}명, 멀음 {st.get('far', 0)}명으로, 이 학생의 배치가 얼마나 모였는지 볼 수 있습니다."
     if question_type == "peers_to_student":
         return f"친구들이 이 학생을 배치한 결과는 가까움 {pt.get('near', 0)}명, 중간 {pt.get('middle', 0)}명, 멀음 {pt.get('far', 0)}명입니다."
     if question_type == "peers_near_list":
-        return f"이 학생을 가깝게 배치한 친구는 {_join_names_short(ctx['peers_to'].get('near', []))}입니다."
+        return f"{name} 학생을 가까움 범위에 배치한 학생은 {_join_names_short(ctx['peers_to'].get('near', []))}입니다. 배치 결과 기준입니다."
     if question_type == "peers_far_list":
-        return f"이 학생을 멀게 배치한 친구는 {_join_names_short(ctx['peers_to'].get('far', []))}입니다."
+        return f"{name} 학생을 멀리 배치한 학생은 {_join_names_short(ctx['peers_to'].get('far', []))}입니다. 배치 결과 기준입니다."
     if question_type == "mutual_similarity":
         if gap_count == 0:
             return "이 학생이 본 거리감과 친구들이 본 거리감의 단계 차이는 크게 확인되지 않았습니다."
@@ -5412,6 +5412,13 @@ def _classify_relation_free_question(question_text: str) -> str:
     if not q:
         return "unsupported"
 
+    asks_who = any(word in q for word in ["누구", "어떤 친구", "어느 친구", "누구와", "명단"])
+    near_terms = ["가깝", "가까", "친하", "가깝다고 생각", "친하다고 생각"]
+    far_terms = ["멀", "떨어", "멀다고 생각"]
+    target_terms = ["자신을", "나를", "이 학생을", "해당 학생을", "그 학생을"]
+    self_view_terms = ["이 학생이", "학생이", "친구들을", "배치", "바라", "자신이", "둔", "놓은"]
+    peer_view_terms = ["친구들이", "다른 학생들이", "친구가", "상대가", "상대 학생이"]
+
     risky_words = [
         "왕따", "따돌림", "괴롭", "문제 학생", "문제아", "위험", "인기",
         "싫어", "미움", "원인", "잘못", "부적응", "소외", "고립", "진단",
@@ -5420,7 +5427,6 @@ def _classify_relation_free_question(question_text: str) -> str:
         return "unsupported"
 
     has_gap = any(word in q for word in ["거리감 차이", "차이", "다르게", "서로", "비대칭"])
-    asks_who = any(word in q for word in ["누구", "어떤 친구", "어느 친구", "누구와", "명단"])
     if has_gap and asks_who:
         return "distance_gap_detail"
     if has_gap and any(word in q for word in ["반영", "영향", "결과"]):
@@ -5433,17 +5439,24 @@ def _classify_relation_free_question(question_text: str) -> str:
     if any(word in q for word in ["왜", "유형", "분산", "밀집", "경계", "나왔", "나온"]):
         return "why_type"
 
-    if any(word in q for word in ["친구들이", "다른 학생들이", "친구가"]) and any(word in q for word in ["이 학생", "해당 학생", "배치", "바라"]):
-        if any(word in q for word in ["가깝", "가까"]):
+    if asks_who and any(word in q for word in near_terms) and any(word in q for word in ["자신을", "와 가깝", "과 가깝", "를 가깝", "을 가깝", "와 친하", "과 친하"]):
+        return "peers_near_list"
+    if asks_who and any(word in q for word in far_terms) and any(word in q for word in ["자신을", "와 멀", "과 멀", "를 멀", "을 멀", "와 떨어", "과 떨어"]):
+        return "peers_far_list"
+
+    # Natural teacher phrasing such as "김민수와 가깝다고 생각한 학생" is
+    # interpreted as "students who placed 김민수 in the near range".
+    if any(word in q for word in target_terms) or any(word in q for word in peer_view_terms):
+        if any(word in q for word in near_terms):
             return "peers_near_list" if asks_who else "peers_to_student"
-        if any(word in q for word in ["멀", "떨어"]):
+        if any(word in q for word in far_terms):
             return "peers_far_list" if asks_who else "peers_to_student"
         return "peers_to_student"
 
-    if any(word in q for word in ["이 학생", "학생이", "친구들을", "배치", "바라"]):
-        if any(word in q for word in ["가깝", "가까"]):
+    if any(word in q for word in self_view_terms):
+        if any(word in q for word in near_terms):
             return "student_near_list" if asks_who else "student_to_peers"
-        if any(word in q for word in ["멀", "떨어"]):
+        if any(word in q for word in far_terms):
             return "student_far_list" if asks_who else "student_to_peers"
         if any(word in q for word in ["넓", "흩어", "모여"]):
             return "student_spread"
