@@ -87,7 +87,6 @@
       <div>
         <div class="section-title">관계 설명 도우미</div>
       </div>
-      <span class="status" id="aiSourceBadge">열기</span>
     </summary>
 
     <div class="ai-chat-controls">
@@ -101,6 +100,10 @@
 
     <div id="aiChatLog" class="ai-chat-log">
       <div class="ai-message bot">학생을 선택하면 결과 안에서 더 살펴볼 질문을 제안합니다.</div>
+    </div>
+    <div class="ai-chat-composer">
+      <input id="aiFreeQuestion" type="text" maxlength="120" placeholder="관계 지도 안에서 궁금한 점을 짧게 입력하세요">
+      <button type="button" class="pill primary" id="aiFreeAsk">질문</button>
     </div>
   </details>
 
@@ -421,21 +424,20 @@
     padding: 14px;
   }
   .ai-chat-summary {
-    display: flex;
-    justify-content: space-between;
+    display: inline-flex;
+    justify-content: flex-start;
     align-items: center;
-    gap: 12px;
+    gap: 7px;
     cursor: pointer;
     list-style: none;
   }
   .ai-chat-summary::before {
-    content: "▶";
+    content: "\25B6";
     color: #111827;
     font-size: 12px;
-    margin-right: -6px;
   }
   .ai-chat-box[open] .ai-chat-summary::before {
-    content: "▼";
+    content: "\25BE";
   }
   .ai-chat-summary::-webkit-details-marker {
     display: none;
@@ -483,6 +485,7 @@
     margin-top: 12px;
   }
   .ai-message {
+    max-width: min(78%, 620px);
     border: 1px solid #e5e7eb;
     border-radius: 10px;
     padding: 10px 11px;
@@ -494,15 +497,38 @@
     white-space: pre-wrap;
   }
   .ai-message.user {
+    justify-self: end;
     background: #eef2ff;
     border-color: #c7d2fe;
+    border-bottom-right-radius: 4px;
   }
   .ai-message.bot {
+    justify-self: start;
     background: #fbfbfd;
+    border-bottom-left-radius: 4px;
   }
   .ai-message.muted-msg {
+    justify-self: start;
     color: #6b7280;
     background: #f8fafc;
+  }
+  .ai-chat-composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .ai-chat-composer input {
+    min-width: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 11px;
+    font: inherit;
+    font-size: 14px;
+    background: #fff;
+  }
+  .ai-chat-composer button {
+    min-width: 70px;
   }
   .survey-box {
     margin-top: 16px;
@@ -637,6 +663,10 @@
   @media(max-width: 900px) {
     .result-grid { grid-template-columns: 1fr; }
   }
+  @media(max-width: 560px) {
+    .ai-message { max-width: 92%; }
+    .ai-chat-composer { grid-template-columns: 1fr; }
+  }
 </style>
 
 <script>
@@ -652,8 +682,8 @@
   const palette = ['#111827', '#4b5563', '#6b7280', '#374151', '#9ca3af', '#1f2937'];
   const aiStudentSelect = document.getElementById('aiStudentSelect');
   const aiChatLog = document.getElementById('aiChatLog');
-  const aiSourceBadge = document.getElementById('aiSourceBadge');
-  const aiChatBox = document.querySelector('.ai-chat-box');
+  const aiFreeQuestion = document.getElementById('aiFreeQuestion');
+  const aiFreeAsk = document.getElementById('aiFreeAsk');
   const questionLabels = {
     why_type: '왜 이 유형으로 나왔나요?',
     why_distributed: '왜 이 유형으로 나왔나요?',
@@ -739,13 +769,19 @@
       btn.disabled = !!on;
       btn.classList.toggle('is-disabled', !!on);
     });
-    if (on && aiSourceBadge) aiSourceBadge.textContent = '생성 중';
+    if (aiFreeQuestion) aiFreeQuestion.disabled = !!on;
+    if (aiFreeAsk) aiFreeAsk.disabled = !!on;
+  }
+
+  function clearAiSuggestions(){
+    if (!aiChatLog) return;
+    const old = aiChatLog.querySelectorAll('.ai-suggestions');
+    old.forEach(el => el.remove());
   }
 
   function appendAiSuggestions(items){
     if (!aiChatLog || !items || items.length === 0) return;
-    const old = aiChatLog.querySelectorAll('.ai-suggestions');
-    old.forEach(el => el.remove());
+    clearAiSuggestions();
     const box = document.createElement('div');
     box.className = 'ai-suggestions';
     for (const item of items) {
@@ -768,31 +804,28 @@
       : '';
     appendAiMessage(
       selectedLabel
-        ? `${selectedLabel} 학생에 대해 무엇이 궁금하신가요?`
+        ? `${selectedLabel} 학생에 대해 궁금한 점을 물어보세요.`
         : '먼저 학생을 선택해 주세요.',
       'bot'
     );
     if (selectedLabel) appendAiSuggestions(rootAiQuestions);
   }
 
-  async function askAi(questionType, explicitLabel){
+  async function sendAiRequest(payload, displayQuestion){
     const needsStudent = true;
     const studentId = aiStudentSelect ? aiStudentSelect.value : '';
-    const selectedLabel = aiStudentSelect && aiStudentSelect.selectedOptions[0]
-      ? aiStudentSelect.selectedOptions[0].textContent
-      : '학급 전체';
     if (needsStudent && !studentId) {
-      alert('이 질문은 먼저 학생을 선택해 주세요.');
+      alert('먼저 학생을 선택해 주세요.');
       return;
     }
-    const label = explicitLabel || questionLabels[questionType] || '질문';
-    appendAiMessage(label, 'user');
+    clearAiSuggestions();
+    appendAiMessage(displayQuestion || '질문', 'user');
     setAiBusy(true);
     try {
       const res = await fetch(`/analysis/class/${code}/${sid}/ai_relation_chat.json`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question_type: questionType, student_id: studentId })
+        body: JSON.stringify(Object.assign({}, payload, { student_id: studentId }))
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -800,20 +833,34 @@
       }
       appendAiMessage(data.answer || '', 'bot');
       appendAiSuggestions(data.followups || rootAiQuestions);
-      if (aiSourceBadge) aiSourceBadge.textContent = '열림';
     } catch (err) {
       appendAiMessage(`설명을 불러오지 못했습니다.\n${err.message || err}`, 'muted-msg');
-      if (aiSourceBadge) aiSourceBadge.textContent = '오류';
     } finally {
       setAiBusy(false);
     }
   }
 
+  async function askAi(questionType, explicitLabel){
+    const label = explicitLabel || questionLabels[questionType] || '질문';
+    return sendAiRequest({ question_type: questionType }, label);
+  }
+
+  async function askFreeAi(){
+    if (!aiFreeQuestion) return;
+    const textValue = aiFreeQuestion.value.trim();
+    if (!textValue) return;
+    aiFreeQuestion.value = '';
+    return sendAiRequest({ question_text: textValue }, textValue);
+  }
+
   if (aiStudentSelect) aiStudentSelect.addEventListener('change', resetAiConversation);
-  if (aiChatBox && aiSourceBadge) {
-    aiChatBox.addEventListener('toggle', () => {
-      if (!aiChatBox.open) aiSourceBadge.textContent = '열기';
-      else if (aiSourceBadge.textContent === '열기') aiSourceBadge.textContent = '열림';
+  if (aiFreeAsk) aiFreeAsk.addEventListener('click', askFreeAi);
+  if (aiFreeQuestion) {
+    aiFreeQuestion.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        askFreeAi();
+      }
     });
   }
 
