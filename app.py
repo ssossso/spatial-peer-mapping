@@ -504,6 +504,7 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                 submitted = int((ss.submitted if ss and ss.submitted is not None else 0) or 0)
                 teacher_submitted = int((tr.submitted if tr and tr.submitted is not None else 0) or 0)
                 similarity = teacher_student_similarity_summary(str(c.code), sid)
+                result_availability = db_get_result_availability(str(c.code), sid)
                 sessions.append({
                     "sid": sid,
                     "label": f"{int(sid) - 1}회차",
@@ -526,6 +527,10 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                     "finalized": bool(getattr(fin, "finalized", False)) if fin else False,
                     "reset_count": int(reset_row.n or 0) if reset_row else 0,
                     "similarity": similarity,
+                    "result_available": bool(result_availability.get("available")),
+                    "result_min_submitted": int(result_availability.get("min_submitted") or MIN_RESULT_SUBMISSIONS),
+                    "result_needed": int(result_availability.get("needed") or 0),
+                    "result_message": result_availability.get("message") or "",
                 })
 
             out.append({
@@ -1065,6 +1070,38 @@ def db_get_submitted_map(class_code: str, sid: str) -> Dict[str, bool]:
     for r in rows:
         m[r.student_name] = bool(r.submitted)
     return m
+
+
+MIN_RESULT_SUBMISSIONS = 3
+
+
+def db_get_result_availability(class_code: str, sid: str, min_submitted: int = MIN_RESULT_SUBMISSIONS) -> Dict[str, Any]:
+    """Return whether a session has enough student submissions to show results."""
+    try:
+        students = db_get_students_in_class(class_code)
+        excluded = db_get_excluded_student_names(class_code, sid)
+        names = [
+            (s.get("name") or "").strip()
+            for s in students
+            if (s.get("name") or "").strip() and (s.get("name") or "").strip() not in excluded
+        ]
+        submitted_map = db_get_submitted_map(class_code, sid)
+        submitted = sum(1 for name in names if bool(submitted_map.get(name, False)))
+        total = len(names)
+    except Exception:
+        total = 0
+        submitted = 0
+
+    min_submitted = int(min_submitted)
+    needed = max(0, min_submitted - int(submitted))
+    return {
+        "available": submitted >= min_submitted,
+        "min_submitted": min_submitted,
+        "submitted": int(submitted),
+        "total": int(total),
+        "needed": needed,
+        "message": f"학생 배치가 {min_submitted}명 이상 모이면 결과를 볼 수 있습니다.",
+    }
 
 
 
@@ -2931,6 +2968,11 @@ def class_detail_legacy(code):
         for _sid, meta in sorted(cls.get("sessions", {}).items(), key=lambda x: int(x[0])):
             session_links.append({"sid": _sid, "label": meta.get("label", f"{_sid}차"), "url": f"/s/{code}/{_sid}"})
 
+        result_availability_by_sid = {
+            _sid: db_get_result_availability(code, _sid)
+            for _sid in VISIBLE_SESSION_IDS
+        }
+
         return render_template(
             "class_detail_v2.html",
             cls=cls,
@@ -2940,6 +2982,8 @@ def class_detail_legacy(code):
             session_links=session_links,
             open_panel=True,
             teacher_run=None,
+            result_availability=result_availability_by_sid.get(sid, db_get_result_availability(code, sid)),
+            result_availability_by_sid=result_availability_by_sid,
         )
 
     # JSON fallback
@@ -2970,6 +3014,16 @@ def class_detail_legacy(code):
     for _sid, meta in sorted(cls.get("sessions", {}).items(), key=lambda x: int(x[0])):
         session_links.append({"sid": _sid, "label": meta.get("label", f"{_sid}차"), "url": f"/s/{code}/{_sid}"})
 
+    submitted_count = sum(1 for r in rows if r.get("status") == "완료")
+    fallback_availability = {
+        "available": submitted_count >= MIN_RESULT_SUBMISSIONS,
+        "min_submitted": MIN_RESULT_SUBMISSIONS,
+        "submitted": submitted_count,
+        "total": len(rows),
+        "needed": max(0, MIN_RESULT_SUBMISSIONS - submitted_count),
+        "message": f"학생 배치가 {MIN_RESULT_SUBMISSIONS}명 이상 모이면 결과를 볼 수 있습니다.",
+    }
+
     return render_template(
         "class_detail_v2.html",
         cls=cls,
@@ -2979,6 +3033,8 @@ def class_detail_legacy(code):
         session_links=session_links,
         open_panel=True,
         teacher_run=None,
+        result_availability=fallback_availability,
+        result_availability_by_sid={str(_sid): fallback_availability for _sid in VISIBLE_SESSION_IDS},
     )
 
 
@@ -3082,6 +3138,11 @@ def class_detail_v2(code):
             "url": f"/s/{code}/{_sid}"
         })
 
+    result_availability_by_sid = {
+        _sid: db_get_result_availability(code, _sid)
+        for _sid in VISIBLE_SESSION_IDS
+    }
+
     return render_template(
         "class_detail_v2.html",
         cls=cls,
@@ -3091,6 +3152,8 @@ def class_detail_v2(code):
         session_links=session_links,
         open_panel=open_panel,
         teacher_run=teacher_run,
+        result_availability=result_availability_by_sid.get(sid, db_get_result_availability(code, sid)),
+        result_availability_by_sid=result_availability_by_sid,
     )
 
 
@@ -3196,6 +3259,15 @@ def teacher_analysis(code):
     for _sid, meta in sorted(cls.get("sessions", {}).items(), key=lambda x: int(x[0])):
         session_links.append({"sid": _sid, "label": meta.get("label", f"{_sid}차"), "url": f"/s/{code}/{_sid}"})
 
+    fallback_availability = {
+        "available": False,
+        "min_submitted": MIN_RESULT_SUBMISSIONS,
+        "submitted": 0,
+        "total": len(rows),
+        "needed": MIN_RESULT_SUBMISSIONS,
+        "message": f"학생 배치가 {MIN_RESULT_SUBMISSIONS}명 이상 모이면 결과를 볼 수 있습니다.",
+    }
+
     return render_template(
         "class_detail_v2.html",
         cls=cls,
@@ -3204,6 +3276,8 @@ def teacher_analysis(code):
         sid=sid,
         session_links=session_links,
         open_panel=open_panel,
+        result_availability=fallback_availability,
+        result_availability_by_sid={str(_sid): fallback_availability for _sid in VISIBLE_SESSION_IDS},
     )
 
 
@@ -3457,6 +3531,16 @@ def teacher_session_result(code: str, sid: str):
         return "학급을 찾을 수 없거나 접근 권한이 없습니다.", 404
     cls = ensure_class_schema(cls)
     class_teacher_username = _class_owner_username(cls, session["teacher"])
+    result_availability = db_get_result_availability(code, sid)
+
+    if not result_availability.get("available"):
+        return render_template(
+            "result_unavailable.html",
+            cls=cls,
+            code=code,
+            sid=sid,
+            availability=result_availability,
+        ), 409
 
     students = db_get_students_in_class(code)
     submitted_map = db_get_submitted_map(code, sid)
@@ -6152,6 +6236,15 @@ def analysis_spm_result(code, sid):
     cls = db_get_class_for_viewer(code, session["teacher"])
     if not cls or cls.get("_forbidden"):
         return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    result_availability = db_get_result_availability(code, sid)
+    if not result_availability.get("available"):
+        return jsonify({
+            "ok": False,
+            "error": "not_enough_submissions",
+            "message": "관계 지도는 최소 3명의 학생 배치가 모이면 생성됩니다.",
+            "availability": result_availability,
+        }), 409
 
     refresh = (request.args.get("refresh") or "").strip().lower() in ["1", "true", "yes"]
     cache_key = f"spm_result_{sid}_v1"
