@@ -130,10 +130,19 @@
                   </div>
 
                   <div class="action-row">
-                    <a class="btn btn-primary" href="/teacher/class/{{ c.code }}/result/{{ s.sid }}" target="_blank" rel="noopener noreferrer">결과 페이지 보기</a>
+                    {% if s.result_available %}
+                      <a class="btn btn-primary" href="/teacher/class/{{ c.code }}/result/{{ s.sid }}" target="_blank" rel="noopener noreferrer">결과 페이지 보기</a>
+                    {% else %}
+                      <span class="btn is-disabled" title="{{ s.result_message }}">결과 페이지 보기</span>
+                    {% endif %}
                     <button type="button" class="btn" data-sync-sheet data-code="{{ c.code }}" data-sid="{{ s.sid }}">구글 시트 저장</button>
                     <button type="button" class="btn danger" data-reset-session data-reset-scope="all" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 전체">전체 초기화</button>
                   </div>
+                  {% if not s.result_available %}
+                    <div class="small" style="margin-top:8px; color:#6b7280; font-weight:800;">
+                      학생 배치가 {{ s.result_min_submitted }}명 이상 모이면 결과를 볼 수 있습니다.
+                    </div>
+                  {% endif %}
                 </details>
               {% endfor %}
             </div>
@@ -379,6 +388,12 @@
   .btn.danger {
     border-color: #fecaca;
     color: #991b1b;
+  }
+  .btn.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: #f8fafc;
+    color: #6b7280;
   }
   .notice {
     padding: 16px;

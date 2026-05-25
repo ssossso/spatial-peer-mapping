@@ -254,6 +254,8 @@
   {% set rounds = [("2","1회차","4월 말"), ("3","2회차","5월 말"), ("4","3회차","6월 말")] %}
   <div class="round-row">
     {% for n, label, when in rounds %}
+      {% set round_result = result_availability_by_sid.get(n) if result_availability_by_sid is defined else None %}
+      {% set can_view_round_result = round_result and round_result.available %}
       <div
         class="round-card {% if open_panel and (sid|string)==(n|string) %}active{% endif %}"
         data-open-href="/teacher/class/{{ code }}/v2?sid={{ n }}&open=1"
@@ -265,13 +267,22 @@
           <div class="round-main">{{ label }}</div>
           <div class="round-sub">{{ when }}</div>
         </div>
-        <a
-          class="pill"
-          href="/teacher/class/{{ code }}/result/{{ n }}"
-          target="_blank"
-          rel="noopener noreferrer"
-          onclick="event.stopPropagation();"
-        >결과 보기</a>
+        {% if can_view_round_result %}
+          <a
+            class="pill"
+            href="/teacher/class/{{ code }}/result/{{ n }}"
+            target="_blank"
+            rel="noopener noreferrer"
+            onclick="event.stopPropagation();"
+          >결과 보기</a>
+        {% else %}
+          <span
+            class="pill is-disabled"
+            aria-disabled="true"
+            title="학생 배치가 3명 이상 모이면 결과를 볼 수 있습니다."
+            onclick="event.stopPropagation();"
+          >결과 보기</span>
+        {% endif %}
       </div>
     {% endfor %}
   </div>
@@ -381,8 +392,21 @@
 
         <div class="btn-row">
           <button type="button" class="pill" id="btnExclude">참여 제외 학생 확인</button>
-          <a class="pill primary" id="resultLink" href="/teacher/class/{{ code }}/result/{{ sid }}">결과 보기</a>
+          <a
+            class="pill primary {% if not result_availability.available %}is-disabled{% endif %}"
+            id="resultLink"
+            href="/teacher/class/{{ code }}/result/{{ sid }}"
+            aria-disabled="{% if result_availability.available %}false{% else %}true{% endif %}"
+            data-result-available="{% if result_availability.available %}1{% else %}0{% endif %}"
+            data-result-message="{{ result_availability.message }}"
+          >결과 보기</a>
         </div>
+        {% if not result_availability.available %}
+          <div class="small" style="margin-top:8px; color:#6b7280; font-weight:800;">
+            학생 배치가 {{ result_availability.min_submitted }}명 이상 모이면 결과를 볼 수 있습니다.
+            현재 {{ result_availability.submitted }}/{{ result_availability.total }}명입니다.
+          </div>
+        {% endif %}
 
         <div class="mini-card" id="boxExclude" style="display:none; margin-top:10px;">
           <div style="font-weight:950;">참여 제외 학생</div>
@@ -500,7 +524,12 @@
           </div>
 
           <div class="btn-row" style="margin-top:12px;">
-            <a class="pill primary" id="oldResultLink" href="/teacher/class/{{ code }}/result/{{ sid }}">결과 보기</a>
+            <a
+              class="pill primary {% if not result_availability.available %}is-disabled{% endif %}"
+              id="oldResultLink"
+              href="/teacher/class/{{ code }}/result/{{ sid }}"
+              aria-disabled="{% if result_availability.available %}false{% else %}true{% endif %}"
+            >결과 보기</a>
           </div>
 
           <div class="small" id="finalizeSavedMsg" style="margin-top:8px; display:none;">회차 결과가 저장되었습니다.</div>
@@ -620,6 +649,7 @@
     const finalizeTopHint = document.getElementById('finalizeTopHint');
     const finalizeSavedMsg = document.getElementById('finalizeSavedMsg');
     const resultLink = document.getElementById('resultLink');
+    const oldResultLink = document.getElementById('oldResultLink');
     const btnExcludeYes = document.getElementById('btnExcludeYes');
     const btnExcludeNo = document.getElementById('btnExcludeNo');
     const excludeReasons = document.getElementById('excludeReasons');
@@ -963,8 +993,20 @@
     if (resultLink) {
       resultLink.addEventListener('click', async (event) => {
         event.preventDefault();
+        if (resultLink.dataset.resultAvailable === '0') {
+          return window.openGateModal(resultLink.dataset.resultMessage || '학생 배치가 3명 이상 모이면 결과를 볼 수 있습니다.');
+        }
         if (!exclusionResolved) return window.openGateModal('참여 제외 학생 확인을 먼저 완료해 주세요.');
         window.location.href = `/teacher/class/${CODE}/result/${SID}`;
+      });
+    }
+
+    if (oldResultLink) {
+      oldResultLink.addEventListener('click', (event) => {
+        if (oldResultLink.getAttribute('aria-disabled') === 'true') {
+          event.preventDefault();
+          return window.openGateModal('학생 배치가 3명 이상 모이면 결과를 볼 수 있습니다.');
+        }
       });
     }
 

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+{% set display_sid = sid|int - 1 %}
+
+<div class="card" style="max-width:720px; text-align:center;">
+  <h2 style="margin:0 0 8px 0;">아직 결과를 만들 수 없습니다</h2>
+  <p class="muted" style="margin:0 0 18px 0; font-weight:800;">
+    {{ cls.name }} / {{ display_sid }}회차
+  </p>
+
+  <div style="border:1px solid #e5e7eb; border-radius:14px; background:#f8fafc; padding:18px; text-align:left;">
+    <div style="font-weight:950; margin-bottom:8px;">현재 제출 현황</div>
+    <div style="font-size:20px; font-weight:950; margin-bottom:8px;">
+      {{ availability.submitted }}/{{ availability.total }}명
+    </div>
+    <div class="muted" style="font-weight:800; line-height:1.55;">
+      관계 지도는 최소 {{ availability.min_submitted }}명의 학생 배치가 모이면 생성됩니다.
+      {% if availability.needed > 0 %}
+        앞으로 {{ availability.needed }}명의 제출이 더 필요합니다.
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-top:18px;">
+    <a class="btn" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
+  </div>
+</div>
+{% endblock %}
