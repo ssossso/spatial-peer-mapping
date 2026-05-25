@@ -432,12 +432,17 @@
     list-style: none;
   }
   .ai-chat-summary::before {
-    content: "\25B6";
-    color: #111827;
-    font-size: 12px;
+    content: "";
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid #111827;
+    flex: 0 0 auto;
+    transition: transform 0.15s ease;
   }
   .ai-chat-box[open] .ai-chat-summary::before {
-    content: "\25BE";
+    transform: rotate(90deg);
   }
   .ai-chat-summary::-webkit-details-marker {
     display: none;
