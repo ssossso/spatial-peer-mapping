@@ -5406,6 +5406,57 @@ def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
     return f"이번 회차는 밀집형 {counts.get('dense', 0)}명, 경계형 {counts.get('boundary', 0)}명, 분산형 {counts.get('distributed', 0)}명으로 요약됩니다."
 
 
+def _classify_relation_free_question(question_text: str) -> str:
+    """Map a teacher's free question to a safe internal relation-helper question type."""
+    q = " ".join(str(question_text or "").lower().split())
+    if not q:
+        return "unsupported"
+
+    risky_words = [
+        "왕따", "따돌림", "괴롭", "문제 학생", "문제아", "위험", "인기",
+        "싫어", "미움", "원인", "잘못", "부적응", "소외", "고립", "진단",
+    ]
+    if any(word in q for word in risky_words):
+        return "unsupported"
+
+    has_gap = any(word in q for word in ["거리감 차이", "차이", "다르게", "서로", "비대칭"])
+    asks_who = any(word in q for word in ["누구", "어떤 친구", "어느 친구", "누구와", "명단"])
+    if has_gap and asks_who:
+        return "distance_gap_detail"
+    if has_gap and any(word in q for word in ["반영", "영향", "결과"]):
+        return "distance_gap_effect"
+    if has_gap:
+        return "distance_gap"
+
+    if any(word in q for word in ["기준", "판단", "계산", "근거", "분류"]):
+        return "why_type_basis"
+    if any(word in q for word in ["왜", "유형", "분산", "밀집", "경계", "나왔", "나온"]):
+        return "why_type"
+
+    if any(word in q for word in ["친구들이", "다른 학생들이", "친구가"]) and any(word in q for word in ["이 학생", "해당 학생", "배치", "바라"]):
+        if any(word in q for word in ["가깝", "가까"]):
+            return "peers_near_list" if asks_who else "peers_to_student"
+        if any(word in q for word in ["멀", "떨어"]):
+            return "peers_far_list" if asks_who else "peers_to_student"
+        return "peers_to_student"
+
+    if any(word in q for word in ["이 학생", "학생이", "친구들을", "배치", "바라"]):
+        if any(word in q for word in ["가깝", "가까"]):
+            return "student_near_list" if asks_who else "student_to_peers"
+        if any(word in q for word in ["멀", "떨어"]):
+            return "student_far_list" if asks_who else "student_to_peers"
+        if any(word in q for word in ["넓", "흩어", "모여"]):
+            return "student_spread"
+        return "student_to_peers"
+
+    return "unsupported"
+
+
+def _safe_relation_question_refusal() -> str:
+    """Return a short safe answer for questions outside the relation-map scope."""
+    return "이 질문은 원인이나 학생 상태를 단정할 수 있어 답하기 어렵습니다. 거리감, 유형 판단, 배치 차이처럼 관계 지도 안의 정보로 질문해 주세요."
+
+
 def _openai_relation_answer(question_type: str, payload: Dict[str, Any]) -> Tuple[str, str]:
     """Generate a privacy-safe teacher explanation, falling back locally if needed."""
     api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
@@ -6078,7 +6129,19 @@ def analysis_ai_relation_chat(code, sid):
         return jsonify({"ok": False, "error": "forbidden"}), 403
 
     body = request.get_json(silent=True) or {}
-    question_type = (body.get("question_type") or "overview").strip()
+    question_text = (body.get("question_text") or "").strip()
+    free_question = bool(question_text)
+    question_type = _classify_relation_free_question(question_text) if free_question else (body.get("question_type") or "overview").strip()
+    if free_question and question_type == "unsupported":
+        out = {
+            "ok": True,
+            "answer": _limit_ai_answer(_safe_relation_question_refusal()),
+            "notice": "",
+            "source": "local",
+            "followups": _relation_chat_followups("overview"),
+        }
+        return jsonify(out)
+
     allowed_questions = {
         "overview",
         "why_type",
@@ -6105,10 +6168,31 @@ def analysis_ai_relation_chat(code, sid):
     if student_id and not (student_id.startswith("S") and student_id[1:].isdigit()):
         student_id = ""
 
-    local_question = question_type != "overview"
+    if free_question and not student_id:
+        try:
+            result = build_spm_result_payload(code, sid)
+            names = [str(s.get("name") or "") for s in (result.get("students") or []) if str(s.get("name") or "")]
+            anon = _anon_id_map(names)
+            for name in sorted(names, key=len, reverse=True):
+                if name and name in question_text:
+                    student_id = anon.get(name, "")
+                    break
+        except Exception:
+            student_id = ""
+
+    if question_type != "overview" and not student_id:
+        return jsonify({
+            "ok": True,
+            "answer": "먼저 학생을 선택해 주세요. 학생을 선택하면 이 질문에 답할 수 있습니다.",
+            "notice": "",
+            "source": "local",
+            "followups": _relation_chat_followups("overview"),
+        })
+
+    local_question = free_question or question_type != "overview"
     ai_mode = "local" if local_question else ("openai" if (os.environ.get("OPENAI_API_KEY") or "").strip() else "fallback")
     model_key = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip() if ai_mode == "openai" else "local"
-    cache_key = f"ai_relation_chat_v4_flow_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
+    cache_key = f"ai_relation_chat_v5_safe_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
     cached = cache_get(code, sid, cache_key)
     if cached:
         return jsonify(cached)
