@@ -5315,12 +5315,33 @@ def _visible_relation_context(class_code: str, sid: str, student_id: str, privac
         "asymmetry_count": int(selected.get("asymmetry_count") or 0),
         "asymmetry": asymmetry,
         "counts": privacy_payload.get("counts") or {},
+        "n_students": int(privacy_payload.get("n_students") or 0),
+        "n_submitted": int(privacy_payload.get("n_submitted") or 0),
+        "overall_density": float(privacy_payload.get("overall_density") or 0),
+        "summary": privacy_payload.get("summary") or {},
     }
 
 
 def _relation_chat_followups(question_type: str) -> List[Dict[str, str]]:
     """Return next suggested questions for the relation helper."""
     followups = {
+        "class_summary": [
+            {"type": "class_counts", "label": "유형별 인원은 어떻게 되나요?"},
+            {"type": "class_areas", "label": "함께 놓인 영역은 몇 개인가요?"},
+            {"type": "class_participation", "label": "참여 학생 수는 충분한가요?"},
+        ],
+        "class_counts": [
+            {"type": "class_summary", "label": "학급 전체를 요약해 주세요"},
+            {"type": "class_areas", "label": "함께 놓인 영역은 몇 개인가요?"},
+        ],
+        "class_areas": [
+            {"type": "class_counts", "label": "유형별 인원은 어떻게 되나요?"},
+            {"type": "class_summary", "label": "학급 전체를 요약해 주세요"},
+        ],
+        "class_participation": [
+            {"type": "class_summary", "label": "학급 전체를 요약해 주세요"},
+            {"type": "class_counts", "label": "유형별 인원은 어떻게 되나요?"},
+        ],
         "why_type": [
             {"type": "why_type_basis", "label": "어떤 기준으로 판단했나요?"},
             {"type": "peers_to_student", "label": "친구들이 본 결과도 비슷한가요?"},
@@ -5353,10 +5374,9 @@ def _relation_chat_followups(question_type: str) -> List[Dict[str, str]]:
         ],
     }
     return followups.get(question_type, [
-        {"type": "why_type", "label": "왜 이 유형으로 나왔나요?"},
-        {"type": "student_to_peers", "label": "이 학생은 친구들을 어떻게 배치했나요?"},
-        {"type": "peers_to_student", "label": "친구들은 이 학생을 어떻게 배치했나요?"},
-        {"type": "distance_gap", "label": "거리감 차이가 큰 친구가 있나요?"},
+        {"type": "class_summary", "label": "학급 전체를 요약해 주세요"},
+        {"type": "class_counts", "label": "유형별 인원은 어떻게 되나요?"},
+        {"type": "class_areas", "label": "함께 놓인 영역은 몇 개인가요?"},
     ])
 
 
@@ -5369,6 +5389,27 @@ def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
     counts = ctx.get("counts") or {}
     gap_count = int(ctx.get("asymmetry_count") or 0)
     gaps = ctx.get("asymmetry") or []
+    n_students = int(ctx.get("n_students") or 0)
+    n_submitted = int(ctx.get("n_submitted") or 0)
+    cluster_count = int(counts.get("cluster_count") or 0)
+    dense = int(counts.get("dense") or 0)
+    boundary = int(counts.get("boundary") or 0)
+    distributed = int(counts.get("distributed") or 0)
+
+    if question_type in {"overview", "class_summary"}:
+        if n_submitted < 3:
+            return f"현재 참여는 {n_submitted}/{n_students}명입니다. 아직 전체 구조를 안정적으로 보기에는 응답이 조금 더 필요합니다."
+        return f"이번 관계 지도는 함께 놓인 영역 {cluster_count}개, 밀집형 {dense}명, 경계형 {boundary}명, 분산형 {distributed}명으로 요약됩니다."
+    if question_type == "class_counts":
+        return f"유형별로는 밀집형 {dense}명, 경계형 {boundary}명, 분산형 {distributed}명입니다. 학생 개인 평가가 아니라 배치 구조 기준입니다."
+    if question_type == "class_areas":
+        if cluster_count <= 0:
+            return "아직 뚜렷한 함께 놓인 영역이 충분히 확인되지 않았습니다. 제출 수가 늘면 더 안정적으로 볼 수 있습니다."
+        return f"이번 지도에서는 함께 놓인 영역이 {cluster_count}개로 나타났습니다. 영역 수는 학급 전체 배치 구조를 간단히 요약한 값입니다."
+    if question_type == "class_participation":
+        if n_students <= 0:
+            return "등록된 학생 수를 확인하기 어렵습니다."
+        return f"현재 참여는 {n_submitted}/{n_students}명입니다. 전체 학생의 응답이 많을수록 관계 지도 해석이 더 안정적입니다."
 
     if question_type in {"why_type", "why_distributed"}:
         if rel == "분산형":
@@ -5418,6 +5459,7 @@ def _classify_relation_free_question(question_text: str) -> str:
     target_terms = ["자신을", "나를", "이 학생을", "해당 학생을", "그 학생을"]
     self_view_terms = ["이 학생이", "학생이", "친구들을", "배치", "바라", "자신이", "둔", "놓은"]
     peer_view_terms = ["친구들이", "다른 학생들이", "친구가", "상대가", "상대 학생이"]
+    class_terms = ["학급", "전체", "우리 반", "우리반", "반 전체", "관계 요약", "요약", "흐름"]
 
     risky_words = [
         "왕따", "따돌림", "괴롭", "문제 학생", "문제아", "위험", "인기",
@@ -5436,6 +5478,22 @@ def _classify_relation_free_question(question_text: str) -> str:
 
     if any(word in q for word in ["기준", "판단", "계산", "근거", "분류"]):
         return "why_type_basis"
+
+    if any(word in q for word in class_terms):
+        if any(word in q for word in ["참여", "제출", "응답", "충분"]):
+            return "class_participation"
+        if any(word in q for word in ["몇 명", "몇명", "인원", "밀집형", "경계형", "분산형", "유형별"]):
+            return "class_counts"
+        if any(word in q for word in ["영역", "집단", "몇 개", "몇개", "나뉘", "모여"]):
+            return "class_areas"
+        return "class_summary"
+    if any(word in q for word in ["참여", "제출", "응답"]) and any(word in q for word in ["몇 명", "몇명", "충분", "얼마나"]):
+        return "class_participation"
+    if any(word in q for word in ["함께 놓인 영역", "밀집 영역", "관계 영역", "집단"]) and any(word in q for word in ["몇 개", "몇개", "나뉘", "요약"]):
+        return "class_areas"
+    if any(word in q for word in ["밀집형", "경계형", "분산형"]) and any(word in q for word in ["몇 명", "몇명", "인원", "얼마나"]):
+        return "class_counts"
+
     if any(word in q for word in ["왜", "유형", "분산", "밀집", "경계", "나왔", "나온"]):
         return "why_type"
 
@@ -6157,6 +6215,10 @@ def analysis_ai_relation_chat(code, sid):
 
     allowed_questions = {
         "overview",
+        "class_summary",
+        "class_counts",
+        "class_areas",
+        "class_participation",
         "why_type",
         "why_distributed",
         "why_type_basis",
@@ -6193,7 +6255,8 @@ def analysis_ai_relation_chat(code, sid):
         except Exception:
             student_id = ""
 
-    if question_type != "overview" and not student_id:
+    class_questions = {"overview", "class_summary", "class_counts", "class_areas", "class_participation"}
+    if question_type not in class_questions and not student_id:
         return jsonify({
             "ok": True,
             "answer": "먼저 학생을 선택해 주세요. 학생을 선택하면 이 질문에 답할 수 있습니다.",
