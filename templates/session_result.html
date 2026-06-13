@@ -479,6 +479,20 @@
     gap: 8px;
     margin-top: 2px;
   }
+  .ai-suggestion-group {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: center;
+  }
+  .ai-suggestion-title {
+    width: 100%;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 800;
+    margin-top: 4px;
+  }
   .ai-question {
     padding: 8px 10px;
     font-size: 13px;
@@ -694,6 +708,22 @@
     class_counts: '유형별 인원은 어떻게 되나요?',
     class_areas: '함께 놓인 영역은 몇 개인가요?',
     class_participation: '참여 학생 수는 충분한가요?',
+    dense_meaning: '밀집형은 어떤 의미인가요?',
+    boundary_meaning: '경계형은 어떤 의미인가요?',
+    distributed_meaning: '분산형은 어떻게 해석해야 하나요?',
+    previous_summary: '지난 회차와 달라진 점은 무엇인가요?',
+    class_compactness_change: '지난 회차보다 학급 전체가 더 밀집되었나요?',
+    distributed_change: '분산형 학생 수가 늘었나요, 줄었나요?',
+    cluster_count_change: '밀집 영역 수가 바뀌었나요?',
+    type_changes: '위치 유형이 바뀐 학생은 누구인가요?',
+    big_changes: '변화가 큰 학생은 어떤 방향으로 달라졌나요?',
+    teacher_compare_summary: '교사 배치와 학생 배치가 비슷한가요?',
+    teacher_similarity: '교사가 가깝게 본 관계와 학생들이 가깝게 본 관계가 일치하나요?',
+    teacher_missed_dense: '교사가 놓친 밀집 영역이 있나요?',
+    teacher_distributed_gap: '교사가 예상한 분산형과 실제 학생 배치의 차이가 있나요?',
+    teacher_diff_students: '교사 배치와 차이가 큰 학생은 누구인가요?',
+    watch_students: '더 살펴볼 학생이 있나요?',
+    observation_points: '생활 장면에서 확인하면 좋은 부분은 무엇인가요?',
     why_type: '왜 이 유형으로 나왔나요?',
     why_distributed: '왜 이 유형으로 나왔나요?',
     why_type_basis: '어떤 기준으로 판단했나요?',
@@ -709,19 +739,62 @@
     distance_gap_detail: '어떤 친구와 차이가 컸나요?',
     distance_gap_largest: '차이가 어떻게 나타났나요?',
     distance_gap_effect: '이 차이를 결과에 어떻게 반영했나요?',
-    asymmetry: '거리감 차이가 큰 친구가 있나요?'
+    asymmetry: '거리감 차이가 큰 친구가 있나요?',
+    student_prev_change: '지난 회차보다 달라진 점이 있나요?',
+    student_teacher_diff: '교사 배치와 다른 점이 있나요?',
+    seating_caution: '자리 배치를 할 때 조심할 점이 있나요?'
   };
   const classAiQuestions = [
-    { type: 'class_summary', label: '학급 전체를 요약해 주세요' },
-    { type: 'class_counts', label: '유형별 인원은 어떻게 되나요?' },
-    { type: 'class_areas', label: '함께 놓인 영역은 몇 개인가요?' },
-    { type: 'class_participation', label: '참여 학생 수는 충분한가요?' }
+    {
+      group: '학급 전체',
+      items: [
+        { type: 'class_summary', label: '이번 회차 학급 전체는 어떻게 보이나요?' },
+        { type: 'class_areas', label: '밀집 영역은 몇 개로 보이나요?' },
+        { type: 'class_counts', label: '유형별 인원은 어떻게 되나요?' },
+        { type: 'boundary_meaning', label: '경계형은 어떤 의미인가요?' },
+        { type: 'distributed_meaning', label: '분산형은 어떻게 해석하나요?' },
+        { type: 'watch_students', label: '더 살펴볼 학생이 있나요?' }
+      ]
+    },
+    {
+      group: '지난 회차와 비교',
+      items: [
+        { type: 'class_compactness_change', label: '지난 회차보다 더 밀집되었나요?' },
+        { type: 'distributed_change', label: '분산형 학생 수가 바뀌었나요?' },
+        { type: 'cluster_count_change', label: '밀집 영역 수가 바뀌었나요?' },
+        { type: 'type_changes', label: '위치 유형이 바뀐 학생은?' },
+        { type: 'big_changes', label: '변화가 큰 학생은?' }
+      ]
+    },
+    {
+      group: '교사 배치와 비교',
+      items: [
+        { type: 'teacher_similarity', label: '가깝게 본 관계가 일치하나요?' },
+        { type: 'teacher_missed_dense', label: '놓친 밀집 영역이 있나요?' },
+        { type: 'teacher_distributed_gap', label: '분산형 예상과 차이가 있나요?' },
+        { type: 'teacher_diff_students', label: '차이가 큰 학생은?' }
+      ]
+    }
   ];
   const studentAiQuestions = [
-    { type: 'why_type', label: '왜 이 유형으로 나왔나요?' },
-    { type: 'student_to_peers', label: '이 학생은 친구들을 어떻게 배치했나요?' },
-    { type: 'peers_to_student', label: '친구들은 이 학생을 어떻게 배치했나요?' },
-    { type: 'distance_gap', label: '거리감 차이가 큰 친구가 있나요?' }
+    {
+      group: '선택 학생',
+      items: [
+        { type: 'why_type', label: '왜 이 유형으로 나왔나요?' },
+        { type: 'student_near_list', label: '이 학생은 누구를 가깝게 배치했나요?' },
+        { type: 'peers_to_student', label: '친구들은 이 학생을 어떻게 배치했나요?' },
+        { type: 'distance_gap', label: '거리감 차이가 큰 친구가 있나요?' }
+      ]
+    },
+    {
+      group: '비교와 활용',
+      items: [
+        { type: 'student_prev_change', label: '지난 회차보다 달라졌나요?' },
+        { type: 'student_teacher_diff', label: '교사 배치와 다른 점이 있나요?' },
+        { type: 'seating_caution', label: '자리 배치에서 조심할 점은?' },
+        { type: 'observation_points', label: '생활 장면에서 뭘 보면 좋나요?' }
+      ]
+    }
   ];
   let latestPayload = initialPayload || null;
   let aiInitialized = false;
@@ -799,14 +872,28 @@
     clearAiSuggestions();
     const box = document.createElement('div');
     box.className = 'ai-suggestions';
-    for (const item of items) {
+    const addButton = (item, parent) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'pill ai-question';
       btn.dataset.questionType = item.type;
       btn.textContent = item.label;
       btn.addEventListener('click', () => askAi(item.type, item.label));
-      box.appendChild(btn);
+      parent.appendChild(btn);
+    };
+    for (const item of items) {
+      if (item.items && Array.isArray(item.items)) {
+        const group = document.createElement('div');
+        group.className = 'ai-suggestion-group';
+        const title = document.createElement('div');
+        title.className = 'ai-suggestion-title';
+        title.textContent = item.group || '추천 질문';
+        group.appendChild(title);
+        item.items.forEach(child => addButton(child, group));
+        box.appendChild(group);
+      } else {
+        addButton(item, box);
+      }
     }
     aiChatLog.appendChild(box);
   }
@@ -827,7 +914,14 @@
   }
 
   async function sendAiRequest(payload, displayQuestion){
-    const classQuestionTypes = ['overview', 'class_summary', 'class_counts', 'class_areas', 'class_participation'];
+    const classQuestionTypes = [
+      'overview', 'class_summary', 'class_counts', 'class_areas', 'class_participation',
+      'dense_meaning', 'boundary_meaning', 'distributed_meaning',
+      'previous_summary', 'class_compactness_change', 'distributed_change', 'cluster_count_change',
+      'type_changes', 'big_changes', 'teacher_compare_summary', 'teacher_similarity',
+      'teacher_missed_dense', 'teacher_distributed_gap', 'teacher_diff_students',
+      'watch_students', 'observation_points'
+    ];
     const questionType = payload && payload.question_type ? payload.question_type : '';
     const needsStudent = !!questionType && !classQuestionTypes.includes(questionType);
     const studentId = aiStudentSelect ? aiStudentSelect.value : '';
