@@ -5355,6 +5355,329 @@ def _join_names_short(names: List[str], limit: int = 6) -> str:
     return ", ".join(shown) + suffix
 
 
+def _join_pair_names_short(pairs: List[Any], limit: int = 4) -> str:
+    """Format a short list of student pairs."""
+    clean: List[str] = []
+    for item in pairs or []:
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            clean.append(f"{item[0]}-{item[1]}")
+        elif isinstance(item, dict) and item.get("pair"):
+            clean.append(str(item.get("pair")))
+        elif item:
+            clean.append(str(item))
+    if not clean:
+        return "없음"
+    shown = clean[:limit]
+    extra = len(clean) - len(shown)
+    suffix = f" 외 {extra}건" if extra > 0 else ""
+    return ", ".join(shown) + suffix
+
+
+def _visible_round_label(sid: str) -> str:
+    """Return the teacher-facing round label for a stored session id."""
+    try:
+        return f"{int(str(sid)) - 1}회차"
+    except Exception:
+        return f"{sid}회차"
+
+
+def _previous_visible_sid(sid: str) -> Optional[str]:
+    """Find the previous visible session id, hiding internal skipped rounds."""
+    sid_value = str(sid or "").strip()
+    if sid_value in VISIBLE_SESSION_IDS:
+        idx = VISIBLE_SESSION_IDS.index(sid_value)
+        return VISIBLE_SESSION_IDS[idx - 1] if idx > 0 else None
+    try:
+        prev = str(int(sid_value) - 1)
+        return prev if prev in VISIBLE_SESSION_IDS else None
+    except Exception:
+        return None
+
+
+def _spm_counts_from_result(result: Dict[str, Any]) -> Dict[str, int]:
+    """Summarize SPM result status counts."""
+    students = result.get("students") or []
+    return {
+        "dense": sum(1 for s in students if s.get("status") == "core"),
+        "boundary": sum(1 for s in students if s.get("status") == "boundary"),
+        "distributed": sum(1 for s in students if s.get("status") == "outlier"),
+        "cluster_count": len(result.get("clusters") or []),
+    }
+
+
+def _mean_offdiag_distance(result: Dict[str, Any]) -> Optional[float]:
+    """Return the mean off-diagonal distance from an SPM distance matrix."""
+    values = ((result.get("distance_matrix") or {}).get("values") or [])
+    vals: List[float] = []
+    for i, row in enumerate(values):
+        if not isinstance(row, list):
+            continue
+        for j, value in enumerate(row):
+            if j <= i:
+                continue
+            if _is_finite_number(value):
+                vals.append(float(value))
+    if not vals:
+        return None
+    return sum(vals) / len(vals)
+
+
+def _status_label_map(result: Dict[str, Any]) -> Dict[str, str]:
+    """Map each student name to its teacher-facing status label."""
+    return {
+        str(s.get("name") or ""): str(s.get("status_label") or _relation_type_from_status(str(s.get("status") or "")))
+        for s in (result.get("students") or [])
+        if str(s.get("name") or "")
+    }
+
+
+def _student_point_map(result: Dict[str, Any]) -> Dict[str, Tuple[float, float]]:
+    """Map each student name to display coordinates."""
+    out: Dict[str, Tuple[float, float]] = {}
+    for s in result.get("students") or []:
+        name = str(s.get("name") or "")
+        if not name:
+            continue
+        x = float(s.get("x") or 0.0) if _is_finite_number(s.get("x")) else 0.0
+        y = float(s.get("y") or 0.0) if _is_finite_number(s.get("y")) else 0.0
+        out[name] = (x, y)
+    return out
+
+
+def _relation_change_context(class_code: str, sid: str, current_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Compare current SPM result with the previous visible session."""
+    prev_sid = _previous_visible_sid(sid)
+    empty = {
+        "ok": False,
+        "prev_sid": prev_sid,
+        "prev_label": _visible_round_label(prev_sid) if prev_sid else "",
+        "curr_label": _visible_round_label(sid),
+        "reason": "previous_session_missing" if not prev_sid else "not_available",
+    }
+    if not prev_sid:
+        return empty
+
+    try:
+        prev_result = build_spm_result_payload(class_code, prev_sid)
+    except Exception as e:
+        app.logger.exception("relation_change_context failed: %s %s", class_code, sid)
+        empty["reason"] = str(e)
+        return empty
+    if int(prev_result.get("n_submitted") or 0) < MIN_RESULT_SUBMISSIONS or int(current_result.get("n_submitted") or 0) < MIN_RESULT_SUBMISSIONS:
+        empty["reason"] = "비교할 회차의 제출 수가 부족함"
+        return empty
+
+    prev_counts = _spm_counts_from_result(prev_result)
+    curr_counts = _spm_counts_from_result(current_result)
+    prev_mean = _mean_offdiag_distance(prev_result)
+    curr_mean = _mean_offdiag_distance(current_result)
+    compact_delta = None
+    compact_label = "비교 부족"
+    if prev_mean is not None and curr_mean is not None:
+        compact_delta = round(curr_mean - prev_mean, 4)
+        if compact_delta <= -0.03:
+            compact_label = "더 밀집됨"
+        elif compact_delta >= 0.03:
+            compact_label = "더 넓어짐"
+        else:
+            compact_label = "비슷함"
+
+    prev_status = _status_label_map(prev_result)
+    curr_status = _status_label_map(current_result)
+    type_changes: List[Dict[str, str]] = []
+    for name in sorted(set(prev_status) & set(curr_status)):
+        if prev_status[name] != curr_status[name]:
+            type_changes.append({"name": name, "from": prev_status[name], "to": curr_status[name]})
+
+    prev_pts = _student_point_map(prev_result)
+    curr_pts = _student_point_map(current_result)
+    movement: List[Dict[str, Any]] = []
+    for name in sorted(set(prev_pts) & set(curr_pts)):
+        px, py = prev_pts[name]
+        cx, cy = curr_pts[name]
+        dist = math.hypot(cx - px, cy - py)
+        if dist <= 1e-9 and prev_status.get(name) == curr_status.get(name):
+            continue
+        from_label = prev_status.get(name, "")
+        to_label = curr_status.get(name, "")
+        if from_label == "분산형" and to_label in {"경계형", "밀집형"}:
+            direction = "밀집 영역 쪽으로 가까워짐"
+        elif to_label == "분산형" and from_label in {"경계형", "밀집형"}:
+            direction = "더 넓은 위치로 이동"
+        elif from_label == "경계형" and to_label == "밀집형":
+            direction = "밀집 영역 안쪽으로 이동"
+        elif from_label == "밀집형" and to_label == "경계형":
+            direction = "영역 가장자리 쪽으로 이동"
+        elif from_label != to_label:
+            direction = f"{from_label}에서 {to_label}으로 바뀜"
+        else:
+            direction = "지도상 위치 변화가 큼"
+        movement.append({
+            "name": name,
+            "distance": round(dist, 4),
+            "from": from_label,
+            "to": to_label,
+            "direction": direction,
+        })
+    movement.sort(key=lambda x: (x.get("from") != x.get("to"), x.get("distance", 0)), reverse=True)
+
+    return {
+        "ok": True,
+        "prev_sid": prev_sid,
+        "prev_label": _visible_round_label(prev_sid),
+        "curr_label": _visible_round_label(sid),
+        "prev_counts": prev_counts,
+        "curr_counts": curr_counts,
+        "prev_mean_distance": round(prev_mean, 4) if prev_mean is not None else None,
+        "curr_mean_distance": round(curr_mean, 4) if curr_mean is not None else None,
+        "compact_delta": compact_delta,
+        "compact_label": compact_label,
+        "type_changes": type_changes[:10],
+        "movement": movement[:10],
+    }
+
+
+def _latest_teacher_placements(class_code: str, sid: str) -> Optional[Dict[str, Any]]:
+    """Return the latest submitted teacher placement map for a session."""
+    if not engine:
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT placements
+            FROM teacher_placement_runs
+            WHERE class_code = :code AND session_id = :sid AND submitted = TRUE
+            ORDER BY ended_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+        """), {"code": class_code, "sid": sid}).fetchone()
+    if not row:
+        return None
+    placements = row.placements if isinstance(row.placements, dict) else _json_load_maybe(row.placements)
+    return placements if isinstance(placements, dict) else None
+
+
+def _bucket_rank(bucket: Optional[str]) -> Optional[int]:
+    """Convert a distance bucket to an ordinal rank."""
+    if bucket == "가까움":
+        return 0
+    if bucket == "중간":
+        return 1
+    if bucket == "멀음":
+        return 2
+    return None
+
+
+def _teacher_comparison_context(class_code: str, sid: str, current_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Compare teacher placement with the student-derived relation map."""
+    names = ((current_result.get("distance_matrix") or {}).get("names") or [])
+    names = [str(n) for n in names if str(n)]
+    if len(names) < 3:
+        return {"ok": False, "reason": "표본 부족"}
+
+    placements = _latest_teacher_placements(class_code, sid)
+    if not placements:
+        return {"ok": False, "reason": "교사 배치 없음"}
+
+    teacher_pts, teacher_valid = points_from_placements_all_students(placements, names)
+    teacher_d = distance_matrix(teacher_pts, teacher_valid)
+    student_d = ((current_result.get("distance_matrix") or {}).get("values") or [])
+
+    close_both: List[Tuple[str, str]] = []
+    teacher_close_only: List[Tuple[str, str]] = []
+    student_close_only: List[Tuple[str, str]] = []
+    major_gap_pairs: List[Dict[str, str]] = []
+    per_student: Dict[str, List[float]] = {name: [] for name in names}
+    teacher_avg: Dict[str, List[float]] = {name: [] for name in names}
+
+    n = len(names)
+    for i in range(n):
+        for j in range(i + 1, n):
+            tv = teacher_d[i][j] if i < len(teacher_d) and j < len(teacher_d[i]) else None
+            sv = student_d[i][j] if i < len(student_d) and j < len(student_d[i]) else None
+            if not (_is_finite_number(tv) and _is_finite_number(sv)):
+                continue
+            teacher_norm = max(0.0, min(1.0, float(tv) / math.sqrt(2.0)))
+            student_norm = max(0.0, min(1.0, float(sv)))
+            tb = _distance_bucket(teacher_norm)
+            sb = _distance_bucket(student_norm)
+            pair = (names[i], names[j])
+            if tb == "가까움" and sb == "가까움":
+                close_both.append(pair)
+            elif tb == "가까움" and sb != "가까움":
+                teacher_close_only.append(pair)
+            elif sb == "가까움" and tb != "가까움":
+                student_close_only.append(pair)
+
+            tr = _bucket_rank(tb)
+            sr = _bucket_rank(sb)
+            if tr is not None and sr is not None:
+                gap = abs(tr - sr)
+                if gap >= 2:
+                    major_gap_pairs.append({
+                        "pair": f"{names[i]}-{names[j]}",
+                        "teacher": tb or "",
+                        "student": sb or "",
+                    })
+                per_student[names[i]].append(abs(teacher_norm - student_norm))
+                per_student[names[j]].append(abs(teacher_norm - student_norm))
+                teacher_avg[names[i]].append(teacher_norm)
+                teacher_avg[names[j]].append(teacher_norm)
+
+    diff_students = []
+    for name, vals in per_student.items():
+        if vals:
+            diff_students.append({"name": name, "score": round(sum(vals) / len(vals), 4)})
+    diff_students.sort(key=lambda x: x["score"], reverse=True)
+
+    student_status = _status_label_map(current_result)
+    teacher_distributed = []
+    for name, vals in teacher_avg.items():
+        if vals and (sum(vals) / len(vals)) >= 0.55:
+            teacher_distributed.append(name)
+    actual_distributed = [name for name, label in student_status.items() if label == "분산형"]
+    distributed_gap = sorted(set(teacher_distributed) ^ set(actual_distributed))
+
+    missed_clusters = []
+    for cluster in current_result.get("clusters") or []:
+        members = [m for m in (cluster.get("members") or []) if m in names]
+        if len(members) < 2:
+            continue
+        total_pairs = 0
+        teacher_close = 0
+        for a in range(len(members)):
+            for b in range(a + 1, len(members)):
+                i = names.index(members[a])
+                j = names.index(members[b])
+                tv = teacher_d[i][j] if i < len(teacher_d) and j < len(teacher_d[i]) else None
+                if not _is_finite_number(tv):
+                    continue
+                total_pairs += 1
+                if _distance_bucket(float(tv) / math.sqrt(2.0)) == "가까움":
+                    teacher_close += 1
+        ratio = teacher_close / total_pairs if total_pairs else 0.0
+        if total_pairs and ratio < 0.35:
+            missed_clusters.append({
+                "members": members,
+                "teacher_close_ratio": round(ratio, 3),
+            })
+
+    similarity = teacher_student_similarity_summary(class_code, sid)
+    return {
+        "ok": True,
+        "similarity": similarity,
+        "close_both_count": len(close_both),
+        "teacher_close_only_count": len(teacher_close_only),
+        "student_close_only_count": len(student_close_only),
+        "teacher_close_only": teacher_close_only[:6],
+        "student_close_only": student_close_only[:6],
+        "major_gap_pairs": major_gap_pairs[:8],
+        "diff_students": diff_students[:8],
+        "teacher_distributed": teacher_distributed[:8],
+        "actual_distributed": actual_distributed[:8],
+        "distributed_gap": distributed_gap[:8],
+        "missed_clusters": missed_clusters[:4],
+    }
+
+
 def _visible_relation_context(class_code: str, sid: str, student_id: str, privacy_payload: Dict[str, Any]) -> Dict[str, Any]:
     """Build teacher-visible name context from anonymized relation payload."""
     result = build_spm_result_payload(class_code, sid)
@@ -5380,6 +5703,9 @@ def _visible_relation_context(class_code: str, sid: str, student_id: str, privac
             "peer_to_student": item.get("peer_to_student") or "",
         })
 
+    change_ctx = _relation_change_context(class_code, sid, result)
+    teacher_ctx = _teacher_comparison_context(class_code, sid, result)
+
     return {
         "selected_id": selected_id,
         "selected_name": selected_name,
@@ -5403,6 +5729,9 @@ def _visible_relation_context(class_code: str, sid: str, student_id: str, privac
         "n_submitted": int(privacy_payload.get("n_submitted") or 0),
         "overall_density": float(privacy_payload.get("overall_density") or 0),
         "summary": privacy_payload.get("summary") or {},
+        "change": change_ctx,
+        "teacher_compare": teacher_ctx,
+        "round_label": _visible_round_label(sid),
     }
 
 
@@ -5410,9 +5739,78 @@ def _relation_chat_followups(question_type: str) -> List[Dict[str, str]]:
     """Return next suggested questions for the relation helper."""
     followups = {
         "class_summary": [
-            {"type": "class_counts", "label": "유형별 인원은 어떻게 되나요?"},
-            {"type": "class_areas", "label": "함께 놓인 영역은 몇 개인가요?"},
-            {"type": "class_participation", "label": "참여 학생 수는 충분한가요?"},
+            {"type": "previous_summary", "label": "지난 회차와 달라진 점은?"},
+            {"type": "teacher_compare_summary", "label": "교사 배치와 비슷한가요?"},
+            {"type": "watch_students", "label": "더 살펴볼 학생이 있나요?"},
+        ],
+        "previous_summary": [
+            {"type": "class_compactness_change", "label": "지난 회차보다 더 밀집되었나요?"},
+            {"type": "distributed_change", "label": "분산형 학생 수가 늘었나요?"},
+            {"type": "big_changes", "label": "변화가 큰 학생은 누구인가요?"},
+        ],
+        "class_compactness_change": [
+            {"type": "distributed_change", "label": "분산형 학생 수는 바뀌었나요?"},
+            {"type": "cluster_count_change", "label": "밀집 영역 수가 바뀌었나요?"},
+            {"type": "type_changes", "label": "위치 유형이 바뀐 학생은?"},
+        ],
+        "distributed_change": [
+            {"type": "class_compactness_change", "label": "전체는 더 밀집되었나요?"},
+            {"type": "type_changes", "label": "위치 유형이 바뀐 학생은?"},
+        ],
+        "cluster_count_change": [
+            {"type": "class_compactness_change", "label": "전체는 더 밀집되었나요?"},
+            {"type": "big_changes", "label": "변화가 큰 학생은 누구인가요?"},
+        ],
+        "type_changes": [
+            {"type": "big_changes", "label": "어떤 방향으로 달라졌나요?"},
+            {"type": "observation_points", "label": "생활 장면에서 뭘 보면 좋나요?"},
+        ],
+        "big_changes": [
+            {"type": "type_changes", "label": "위치 유형이 바뀐 학생은?"},
+            {"type": "student_prev_change", "label": "선택 학생은 어떻게 달라졌나요?"},
+        ],
+        "teacher_compare_summary": [
+            {"type": "teacher_similarity", "label": "가깝게 본 관계가 일치하나요?"},
+            {"type": "teacher_missed_dense", "label": "교사가 놓친 밀집 영역이 있나요?"},
+            {"type": "teacher_diff_students", "label": "교사 배치와 차이가 큰 학생은?"},
+        ],
+        "teacher_similarity": [
+            {"type": "teacher_missed_dense", "label": "교사가 놓친 밀집 영역이 있나요?"},
+            {"type": "teacher_distributed_gap", "label": "분산형 예상과 차이가 있나요?"},
+        ],
+        "teacher_missed_dense": [
+            {"type": "teacher_similarity", "label": "가깝게 본 관계가 일치하나요?"},
+            {"type": "teacher_diff_students", "label": "교사 배치와 차이가 큰 학생은?"},
+        ],
+        "teacher_distributed_gap": [
+            {"type": "teacher_diff_students", "label": "교사 배치와 차이가 큰 학생은?"},
+            {"type": "teacher_compare_summary", "label": "교사 배치 비교를 요약해 주세요"},
+        ],
+        "teacher_diff_students": [
+            {"type": "teacher_similarity", "label": "가깝게 본 관계가 일치하나요?"},
+            {"type": "student_teacher_diff", "label": "선택 학생은 교사 배치와 다른가요?"},
+        ],
+        "watch_students": [
+            {"type": "big_changes", "label": "변화가 큰 학생은 누구인가요?"},
+            {"type": "teacher_diff_students", "label": "교사 배치와 차이가 큰 학생은?"},
+            {"type": "observation_points", "label": "생활 장면에서 뭘 보면 좋나요?"},
+        ],
+        "observation_points": [
+            {"type": "watch_students", "label": "더 살펴볼 학생이 있나요?"},
+            {"type": "seating_caution", "label": "자리 배치에서 조심할 점은?"},
+        ],
+        "seating_caution": [
+            {"type": "student_far_list", "label": "이 학생이 멀게 둔 친구는?"},
+            {"type": "peers_far_list", "label": "이 학생을 멀게 둔 친구는?"},
+            {"type": "distance_gap_detail", "label": "거리감 차이가 큰 친구는?"},
+        ],
+        "student_prev_change": [
+            {"type": "student_teacher_diff", "label": "교사 배치와 다른 점은?"},
+            {"type": "distance_gap_detail", "label": "거리감 차이가 큰 친구는?"},
+        ],
+        "student_teacher_diff": [
+            {"type": "student_prev_change", "label": "지난 회차보다 달라졌나요?"},
+            {"type": "seating_caution", "label": "자리 배치에서 조심할 점은?"},
         ],
         "class_counts": [
             {"type": "class_summary", "label": "학급 전체를 요약해 주세요"},
@@ -5425,6 +5823,18 @@ def _relation_chat_followups(question_type: str) -> List[Dict[str, str]]:
         "class_participation": [
             {"type": "class_summary", "label": "학급 전체를 요약해 주세요"},
             {"type": "class_counts", "label": "유형별 인원은 어떻게 되나요?"},
+        ],
+        "dense_meaning": [
+            {"type": "boundary_meaning", "label": "경계형은 어떤 의미인가요?"},
+            {"type": "distributed_meaning", "label": "분산형은 어떻게 해석하나요?"},
+        ],
+        "boundary_meaning": [
+            {"type": "dense_meaning", "label": "밀집형은 어떤 의미인가요?"},
+            {"type": "distributed_meaning", "label": "분산형은 어떻게 해석하나요?"},
+        ],
+        "distributed_meaning": [
+            {"type": "boundary_meaning", "label": "경계형은 어떤 의미인가요?"},
+            {"type": "watch_students", "label": "더 살펴볼 학생이 있나요?"},
         ],
         "why_type": [
             {"type": "why_type_basis", "label": "어떤 기준으로 판단했나요?"},
@@ -5479,6 +5889,8 @@ def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
     dense = int(counts.get("dense") or 0)
     boundary = int(counts.get("boundary") or 0)
     distributed = int(counts.get("distributed") or 0)
+    change = ctx.get("change") or {}
+    teacher = ctx.get("teacher_compare") or {}
 
     if question_type in {"overview", "class_summary"}:
         if n_submitted < 3:
@@ -5494,6 +5906,97 @@ def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
         if n_students <= 0:
             return "등록된 학생 수를 확인하기 어렵습니다."
         return f"현재 참여는 {n_submitted}/{n_students}명입니다. 전체 학생의 응답이 많을수록 관계 지도 해석이 더 안정적입니다."
+    if question_type == "dense_meaning":
+        return "밀집형은 관계 지도에서 여러 학생과 비교적 가까운 영역 안쪽에 함께 놓인 경우입니다. 친밀도나 관계의 질을 단정하는 뜻은 아닙니다."
+    if question_type == "boundary_meaning":
+        return "경계형은 밀집 영역에 포함되지만 중심부보다 가장자리나 영역 사이에 가까운 경우입니다. 여러 관계 영역을 잇는 위치로 참고할 수 있습니다."
+    if question_type == "distributed_meaning":
+        return "분산형은 특정 밀집 영역에 강하게 포함되지 않은 배치입니다. 관계 단절이 아니라 넓고 느슨한 거리감으로 나타날 수도 있습니다."
+    if question_type == "previous_summary":
+        if not change.get("ok"):
+            return "비교할 이전 회차 결과가 아직 없어 이번 회차만 확인할 수 있습니다."
+        pc = change.get("prev_counts") or {}
+        cc = change.get("curr_counts") or {}
+        return f"{change.get('prev_label')}와 비교하면 밀집 영역은 {pc.get('cluster_count', 0)}개에서 {cc.get('cluster_count', 0)}개, 분산형은 {pc.get('distributed', 0)}명에서 {cc.get('distributed', 0)}명으로 바뀌었습니다."
+    if question_type == "class_compactness_change":
+        if not change.get("ok") or change.get("compact_delta") is None:
+            return "비교할 이전 회차 거리가 부족해 학급 전체 밀집도 변화는 아직 판단하기 어렵습니다."
+        prev_m = change.get("prev_mean_distance")
+        curr_m = change.get("curr_mean_distance")
+        label = change.get("compact_label") or "비슷함"
+        return f"평균 관계 지도 거리는 {prev_m}에서 {curr_m}로 바뀌어, 지난 회차보다 전체 배치는 '{label}'에 가깝게 나타났습니다."
+    if question_type == "distributed_change":
+        if not change.get("ok"):
+            return "이전 회차 결과가 없어 분산형 학생 수 변화를 비교하기 어렵습니다."
+        pc = change.get("prev_counts") or {}
+        cc = change.get("curr_counts") or {}
+        diff = int(cc.get("distributed") or 0) - int(pc.get("distributed") or 0)
+        word = "늘었습니다" if diff > 0 else "줄었습니다" if diff < 0 else "같습니다"
+        return f"분산형 학생 수는 {pc.get('distributed', 0)}명에서 {cc.get('distributed', 0)}명으로 {word}. 변화 방향을 생활 장면과 함께 확인해 주세요."
+    if question_type == "cluster_count_change":
+        if not change.get("ok"):
+            return "이전 회차 결과가 없어 밀집 영역 수 변화를 비교하기 어렵습니다."
+        pc = change.get("prev_counts") or {}
+        cc = change.get("curr_counts") or {}
+        return f"밀집 영역 수는 {pc.get('cluster_count', 0)}개에서 {cc.get('cluster_count', 0)}개로 바뀌었습니다. 영역 수 변화는 학급 구조 변화의 참고 신호입니다."
+    if question_type == "type_changes":
+        if not change.get("ok"):
+            return "이전 회차 결과가 없어 위치 유형 변화 학생을 비교하기 어렵습니다."
+        changes = change.get("type_changes") or []
+        if not changes:
+            return "지난 회차와 비교해 위치 유형이 바뀐 학생은 뚜렷하게 확인되지 않았습니다."
+        parts = [f"{c['name']}({c['from']}→{c['to']})" for c in changes[:5]]
+        return "위치 유형이 바뀐 학생은 " + ", ".join(parts) + "입니다. 변화 자체가 문제를 뜻하지는 않습니다."
+    if question_type == "big_changes":
+        if not change.get("ok"):
+            return "이전 회차 결과가 없어 변화가 큰 학생을 비교하기 어렵습니다."
+        movement = change.get("movement") or []
+        if not movement:
+            return "지난 회차와 비교해 크게 달라진 학생은 뚜렷하게 확인되지 않았습니다."
+        parts = [f"{m['name']}({m['direction']})" for m in movement[:4]]
+        return "변화가 큰 학생은 " + ", ".join(parts) + "로 요약됩니다. 자리, 모둠, 최근 활동 맥락과 함께 보세요."
+    if question_type in {"teacher_compare_summary", "teacher_similarity"}:
+        if not teacher.get("ok"):
+            return f"교사 배치 비교는 아직 어렵습니다. 사유: {teacher.get('reason', '교사 배치 자료 부족')}"
+        sim = teacher.get("similarity") or {}
+        return f"교사 배치와 학생 배치의 전체 유사도는 {sim.get('label', '비교 부족')}입니다. 함께 가깝게 본 관계 {teacher.get('close_both_count', 0)}건, 학생 지도에서만 가까운 관계 {teacher.get('student_close_only_count', 0)}건입니다."
+    if question_type == "teacher_missed_dense":
+        if not teacher.get("ok"):
+            return f"교사 배치 비교는 아직 어렵습니다. 사유: {teacher.get('reason', '교사 배치 자료 부족')}"
+        missed = teacher.get("missed_clusters") or []
+        if not missed:
+            return "학생 지도에서 함께 놓인 밀집 영역이 교사 배치와 크게 어긋난 사례는 뚜렷하게 확인되지 않았습니다."
+        members = [_join_names_short(m.get("members") or [], limit=4) for m in missed[:2]]
+        return "학생 지도에서는 함께 놓였지만 교사 배치에서는 덜 가깝게 나타난 영역: " + " / ".join(members)
+    if question_type == "teacher_distributed_gap":
+        if not teacher.get("ok"):
+            return f"교사 배치 비교는 아직 어렵습니다. 사유: {teacher.get('reason', '교사 배치 자료 부족')}"
+        gap_names = teacher.get("distributed_gap") or []
+        if not gap_names:
+            return "교사가 넓게 본 학생과 학생 지도에서 분산형으로 나타난 학생 사이의 큰 차이는 뚜렷하지 않습니다."
+        return f"교사 배치와 학생 지도에서 분산형 판단이 엇갈린 학생은 {_join_names_short(gap_names)}입니다. 관찰 차이의 참고 지점입니다."
+    if question_type == "teacher_diff_students":
+        if not teacher.get("ok"):
+            return f"교사 배치 비교는 아직 어렵습니다. 사유: {teacher.get('reason', '교사 배치 자료 부족')}"
+        diff_names = [d.get("name") for d in (teacher.get("diff_students") or []) if d.get("name")]
+        if not diff_names:
+            return "교사 배치와 학생 지도 사이에서 차이가 큰 학생은 뚜렷하게 확인되지 않았습니다."
+        return f"교사 배치와 차이가 큰 학생은 {_join_names_short(diff_names)}입니다. 교사 관찰이 틀렸다는 뜻이 아니라 인식 차이 참고점입니다."
+    if question_type == "watch_students":
+        names_to_watch: List[str] = []
+        if change.get("ok"):
+            names_to_watch.extend([m.get("name") for m in (change.get("movement") or [])[:3] if m.get("name")])
+        if teacher.get("ok"):
+            names_to_watch.extend([d.get("name") for d in (teacher.get("diff_students") or [])[:3] if d.get("name")])
+        names_to_watch.extend(ctx.get("student_to", {}).get("far", [])[:2])
+        dedup = list(dict.fromkeys([n for n in names_to_watch if n]))
+        if not dedup:
+            return "현재 자료에서는 따로 더 살펴볼 학생이 뚜렷하게 나타나지 않았습니다. 경계형·분산형 학생을 참고로 볼 수 있습니다."
+        return f"더 살펴볼 학생은 {_join_names_short(dedup)}입니다. 변화가 크거나 교사 배치와 차이가 큰 경우를 우선 참고했습니다."
+    if question_type == "observation_points":
+        if name != "이 학생":
+            return f"{name} 학생은 모둠 활동, 쉬는 시간, 자리 이동 뒤 상호작용에서 배치 거리와 실제 만남이 비슷한지 확인해 보면 좋습니다."
+        return "학급 전체는 밀집 영역 사이를 오가는 학생, 분산형 학생의 활동 참여, 자리나 모둠 변화 뒤 상호작용을 함께 살펴보면 좋습니다."
 
     if question_type in {"why_type", "why_distributed"}:
         if rel == "분산형":
@@ -5528,6 +6031,42 @@ def _relation_chat_local_answer(question_type: str, ctx: Dict[str, Any]) -> str:
         return " / ".join(parts)
     if question_type == "distance_gap_effect":
         return "이 차이는 한쪽 응답만으로 판단하지 않고, 양방향 직접 거리와 다른 학생 배치 패턴을 섞은 최종 거리 계산에 함께 반영됩니다."
+    if question_type == "student_prev_change":
+        if name == "이 학생":
+            return "먼저 학생을 선택해 주세요. 선택 학생의 지난 회차 대비 변화를 확인할 수 있습니다."
+        if not change.get("ok"):
+            return "이전 회차 결과가 없어 이 학생의 변화를 비교하기 어렵습니다."
+        movement = next((m for m in (change.get("movement") or []) if m.get("name") == name), None)
+        if not movement:
+            return f"{name} 학생은 지난 회차와 비교해 위치 유형이나 지도상 위치 변화가 크게 확인되지 않았습니다."
+        return f"{name} 학생은 지난 회차보다 {movement.get('direction')}으로 나타났습니다. {movement.get('from')}→{movement.get('to')} 변화를 함께 참고하세요."
+    if question_type == "student_teacher_diff":
+        if name == "이 학생":
+            return "먼저 학생을 선택해 주세요. 선택 학생의 교사 배치와 학생 지도 차이를 확인할 수 있습니다."
+        if not teacher.get("ok"):
+            return f"교사 배치 비교는 아직 어렵습니다. 사유: {teacher.get('reason', '교사 배치 자료 부족')}"
+        row = next((d for d in (teacher.get("diff_students") or []) if d.get("name") == name), None)
+        gaps = [g for g in (teacher.get("major_gap_pairs") or []) if name in str(g.get("pair") or "").split("-")]
+        if not row and not gaps:
+            return f"{name} 학생은 교사 배치와 학생 지도 사이의 큰 차이가 뚜렷하게 나타나지 않았습니다."
+        if gaps:
+            return f"{name} 학생과 관련해 교사와 학생 지도의 거리 단계 차이가 큰 관계는 {_join_pair_names_short(gaps)}입니다."
+        return f"{name} 학생은 교사 배치와 학생 지도 차이 점수가 비교적 높게 나타났습니다. 점수 {row.get('score')}는 참고용입니다."
+    if question_type == "seating_caution":
+        far_self = ctx.get("student_to", {}).get("far", [])
+        far_peer = ctx.get("peers_to", {}).get("far", [])
+        mutual_far = [n for n in far_self if n in set(far_peer)]
+        if name == "이 학생":
+            return "학생을 선택하면 그 학생이 멀게 배치한 친구와 서로 멀게 나타난 경우를 바탕으로 자리 배치 참고점을 볼 수 있습니다."
+        if mutual_far:
+            return f"{name} 학생과 서로 멀게 나타난 친구는 {_join_names_short(mutual_far)}입니다. 처음부터 가까운 협력 자리로 묶기보다 관찰 후 조정해 주세요."
+        if far_self:
+            return f"{name} 학생이 멀게 배치한 친구는 {_join_names_short(far_self)}입니다. 자리 배치 시 갑작스러운 근접 배치는 신중히 볼 수 있습니다."
+        if far_peer:
+            return f"{name} 학생을 멀게 배치한 친구는 {_join_names_short(far_peer)}입니다. 실제 상호작용과 함께 참고해 주세요."
+        return f"{name} 학생에게서 자리 배치 시 특별히 조심할 멀음 관계는 뚜렷하게 확인되지 않았습니다."
+    if question_type == "cautions":
+        return "이 결과는 학생 개인을 진단하거나 관계 상태를 확정하지 않습니다. 교사의 관찰, 상담, 또래지명 결과와 함께 참고해 주세요."
     return f"이번 회차는 밀집형 {counts.get('dense', 0)}명, 경계형 {counts.get('boundary', 0)}명, 분산형 {counts.get('distributed', 0)}명으로 요약됩니다."
 
 
@@ -5551,6 +6090,48 @@ def _classify_relation_free_question(question_text: str) -> str:
     ]
     if any(word in q for word in risky_words):
         return "unsupported"
+
+    if any(word in q for word in ["자리", "좌석", "붙여", "앉", "모둠"]):
+        return "seating_caution"
+    if any(word in q for word in ["생활 장면", "관찰", "쉬는 시간", "활동 장면", "확인하면 좋은"]):
+        return "observation_points"
+    if any(word in q for word in ["더 살펴볼", "살펴볼 학생", "주의 깊게 볼", "확인할 학생"]):
+        return "watch_students"
+
+    prev_terms = ["지난 회차", "이전 회차", "전 회차", "지난번", "이전", "변화", "달라", "바뀌", "늘었", "줄었"]
+    if any(word in q for word in prev_terms):
+        if any(word in q for word in ["더 밀집", "밀집되", "전체가 더", "학급 전체"]):
+            return "class_compactness_change"
+        if any(word in q for word in ["분산형", "분산"]) and any(word in q for word in ["늘", "줄", "수", "몇 명", "몇명"]):
+            return "distributed_change"
+        if any(word in q for word in ["밀집 영역", "영역 수", "몇 개", "몇개"]):
+            return "cluster_count_change"
+        if any(word in q for word in ["위치 유형", "유형이", "바뀐 학생", "누구"]):
+            return "type_changes"
+        if any(word in q for word in ["큰 학생", "크게", "방향", "누구"]):
+            return "big_changes"
+        if any(word in q for word in class_terms):
+            return "previous_summary"
+        return "student_prev_change"
+
+    if any(word in q for word in ["교사 배치", "교사가", "교사와", "교사 지도", "교사"]):
+        if any(word in q for word in ["놓친", "못 본", "밀집 영역", "함께 놓인 영역"]):
+            return "teacher_missed_dense"
+        if any(word in q for word in ["분산", "넓게 본", "예상"]):
+            return "teacher_distributed_gap"
+        if any(word in q for word in ["비슷", "일치", "유사", "가깝게 본"]):
+            return "teacher_similarity"
+        if any(word in q for word in ["차이", "다른", "어긋", "큰 학생"]):
+            return "teacher_diff_students" if asks_who or "큰 학생" in q else "student_teacher_diff"
+        return "teacher_compare_summary"
+
+    if any(word in q for word in ["의미", "해석", "뜻", "어떻게 봐", "어떻게 보"]):
+        if "분산" in q:
+            return "distributed_meaning"
+        if "경계" in q:
+            return "boundary_meaning"
+        if "밀집" in q:
+            return "dense_meaning"
 
     has_gap = any(word in q for word in ["거리감 차이", "차이", "다르게", "서로", "비대칭"])
     if has_gap and asks_who:
@@ -6312,6 +6893,22 @@ def analysis_ai_relation_chat(code, sid):
         "class_counts",
         "class_areas",
         "class_participation",
+        "dense_meaning",
+        "boundary_meaning",
+        "distributed_meaning",
+        "previous_summary",
+        "class_compactness_change",
+        "distributed_change",
+        "cluster_count_change",
+        "type_changes",
+        "big_changes",
+        "teacher_compare_summary",
+        "teacher_similarity",
+        "teacher_missed_dense",
+        "teacher_distributed_gap",
+        "teacher_diff_students",
+        "watch_students",
+        "observation_points",
         "why_type",
         "why_distributed",
         "why_type_basis",
@@ -6328,6 +6925,9 @@ def analysis_ai_relation_chat(code, sid):
         "distance_gap_largest",
         "distance_gap_effect",
         "asymmetry",
+        "student_prev_change",
+        "student_teacher_diff",
+        "seating_caution",
         "cautions",
     }
     if question_type not in allowed_questions:
@@ -6348,7 +6948,29 @@ def analysis_ai_relation_chat(code, sid):
         except Exception:
             student_id = ""
 
-    class_questions = {"overview", "class_summary", "class_counts", "class_areas", "class_participation"}
+    class_questions = {
+        "overview",
+        "class_summary",
+        "class_counts",
+        "class_areas",
+        "class_participation",
+        "dense_meaning",
+        "boundary_meaning",
+        "distributed_meaning",
+        "previous_summary",
+        "class_compactness_change",
+        "distributed_change",
+        "cluster_count_change",
+        "type_changes",
+        "big_changes",
+        "teacher_compare_summary",
+        "teacher_similarity",
+        "teacher_missed_dense",
+        "teacher_distributed_gap",
+        "teacher_diff_students",
+        "watch_students",
+        "observation_points",
+    }
     if question_type not in class_questions and not student_id:
         return jsonify({
             "ok": True,
@@ -6361,7 +6983,7 @@ def analysis_ai_relation_chat(code, sid):
     local_question = free_question or question_type != "overview"
     ai_mode = "local" if local_question else ("openai" if (os.environ.get("OPENAI_API_KEY") or "").strip() else "fallback")
     model_key = (os.environ.get("OPENAI_MODEL") or "gpt-5.4-mini").strip() if ai_mode == "openai" else "local"
-    cache_key = f"ai_relation_chat_v5_safe_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
+    cache_key = f"ai_relation_chat_v6_safe_{sid}_{student_id or 'class'}_{question_type}_{ai_mode}_{model_key}"
     cached = cache_get(code, sid, cache_key)
     if cached:
         return jsonify(cached)
