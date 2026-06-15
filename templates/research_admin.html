@@ -99,6 +99,13 @@
                       <b>{{ s.student_submitted }}/{{ s.student_total }}</b>
                       <button type="button" class="mini-reset" data-reset-session data-reset-scope="student" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 학생 배치">초기화</button>
                     </div>
+                    {% if s.student_followup_enabled %}
+                      <div class="status-cell">
+                        <span>학생 설문·긍정 지명</span>
+                        <b>{{ s.student_followup_submitted }}/{{ s.student_total }}</b>
+                        <small>이번 회차만 표시</small>
+                      </div>
+                    {% endif %}
                     <div class="status-cell">
                       <span>교사 배치</span>
                       <b>{% if s.teacher_placement_done %}완료{% else %}미완료{% endif %}</b>
@@ -138,6 +145,19 @@
                     <button type="button" class="btn" data-sync-sheet data-code="{{ c.code }}" data-sid="{{ s.sid }}">구글 시트 저장</button>
                     <button type="button" class="btn danger" data-reset-session data-reset-scope="all" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 전체">전체 초기화</button>
                   </div>
+                  {% if s.student_followup_enabled %}
+                    <div class="admin-survey-qr">
+                      <div>
+                        <b>학생 설문·긍정 또래 지명 QR</b>
+                        <span>관리자 화면에서만 표시됩니다. 배치 활동을 제출한 학생만 설문을 저장할 수 있습니다.</span>
+                      </div>
+                      <img src="{{ s.student_followup_qr_src }}" alt="{{ s.label }} 학생 설문 QR" loading="lazy">
+                      <div class="admin-survey-actions">
+                        <button type="button" class="btn" onclick="window.open('{{ s.student_followup_qr_src }}', '_blank')">크게 보기</button>
+                        <button type="button" class="btn" data-download-qr data-src="{{ s.student_followup_qr_src }}" data-label="{{ c.code }}-{{ s.label }}-학생설문">다운로드</button>
+                      </div>
+                    </div>
+                  {% endif %}
                   {% if not s.result_available %}
                     <div class="small" style="margin-top:8px; color:#6b7280; font-weight:800;">
                       학생 배치가 {{ s.result_min_submitted }}명 이상 모이면 결과를 볼 수 있습니다.
@@ -371,6 +391,42 @@
     gap: 8px;
     margin-top: 12px;
   }
+  .admin-survey-qr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 12px;
+    align-items: center;
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid #dbeafe;
+    border-radius: 12px;
+    background: #eff6ff;
+  }
+  .admin-survey-qr b {
+    display: block;
+    color: #1e3a8a;
+    font-size: 14px;
+  }
+  .admin-survey-qr span {
+    display: block;
+    margin-top: 4px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.45;
+  }
+  .admin-survey-qr img {
+    width: 92px;
+    height: 92px;
+    border-radius: 10px;
+    border: 1px solid #bfdbfe;
+    background: #fff;
+  }
+  .admin-survey-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
   .mini-reset {
     margin-top: 8px;
     width: auto;
@@ -415,9 +471,18 @@
     .session-card summary,
     .detail-top,
     .class-admin-panel,
-    .rename-form {
+    .rename-form,
+    .admin-survey-qr {
       flex-direction: column;
       align-items: stretch;
+    }
+    .admin-survey-qr {
+      display: flex;
+    }
+    .admin-survey-qr img {
+      width: 128px;
+      height: 128px;
+      align-self: center;
     }
   }
 </style>
@@ -543,6 +608,28 @@
         alert(`초기화에 실패했습니다: ${e.message || e}`);
         btn.textContent = old;
         btn.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-download-qr]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const src = btn.dataset.src;
+      const label = btn.dataset.label || 'student-survey-qr';
+      try {
+        const res = await fetch(src);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${label}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert(`QR 다운로드에 실패했습니다: ${e.message || e}`);
       }
     });
   });
