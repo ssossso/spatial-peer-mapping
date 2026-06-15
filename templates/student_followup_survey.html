@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="survey-card">
+  <h2>{{ display_sid }}회차 짧은 설문</h2>
+  <p class="survey-subtitle">
+    배치 활동을 마친 뒤 느낀 점을 짧게 알려 주세요.
+    정답은 없으며, 선택한 내용은 친구들에게 공개되지 않습니다.
+  </p>
+
+  {% if error %}
+    <div class="survey-error">{{ error }}</div>
+  {% endif %}
+
+  {% if unavailable %}
+    <div class="survey-done">
+      <b>설문이 열려 있지 않습니다.</b>
+      <span>선생님이 안내한 QR인지 다시 확인해 주세요.</span>
+    </div>
+  {% elif done %}
+    <div class="survey-done">
+      <b>설문 제출이 완료되었습니다.</b>
+      <span>참여해 주셔서 감사합니다.</span>
+    </div>
+  {% elif not_ready %}
+    <div class="survey-done">
+      <b>먼저 배치 활동을 제출해 주세요.</b>
+      <span>배치 활동을 저장한 뒤, 선생님이 안내한 설문 QR로 다시 들어오면 됩니다.</span>
+    </div>
+  {% elif entry_required %}
+    <form method="post" class="survey-form">
+      <input type="hidden" name="form_mode" value="enter">
+
+      <label class="field-label">
+        이름
+        <input name="name" placeholder="학생 이름" autocomplete="off" required>
+      </label>
+
+      <label class="field-label">
+        개인 코드(6자리)
+        <input name="pin" placeholder="예: 123456" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" required>
+      </label>
+
+      <button type="submit" class="survey-submit">설문 시작</button>
+    </form>
+  {% else %}
+    <form method="post" class="survey-form" id="followupSurveyForm">
+      <input type="hidden" name="form_mode" value="survey">
+
+      <div class="student-line">
+        <b>{{ name }}</b>
+        <span>{{ display_sid }}회차</span>
+      </div>
+
+      <section class="survey-section">
+        <h3>활동 경험</h3>
+        <p class="section-help">각 문장을 읽고 가장 가까운 답을 골라 주세요.</p>
+
+        {% for q in questions %}
+          <fieldset class="question-box">
+            <legend>{{ loop.index }}. {{ q.text }}</legend>
+            <div class="scale-row" role="radiogroup" aria-label="{{ q.text }}">
+              <label><input type="radio" name="{{ q.key }}" value="1" required><span>전혀<br>아니다</span></label>
+              <label><input type="radio" name="{{ q.key }}" value="2"><span>아니다</span></label>
+              <label><input type="radio" name="{{ q.key }}" value="3"><span>보통</span></label>
+              <label><input type="radio" name="{{ q.key }}" value="4"><span>그렇다</span></label>
+              <label><input type="radio" name="{{ q.key }}" value="5"><span>매우<br>그렇다</span></label>
+            </div>
+          </fieldset>
+        {% endfor %}
+
+        <label class="field-label">
+          6. 활동하면서 좋았던 점이나 고치면 좋을 점이 있다면 자유롭게 써 주세요.
+          <textarea name="q6_comment" rows="4" maxlength="1000" placeholder="선택 문항입니다."></textarea>
+        </label>
+      </section>
+
+      <section class="survey-section">
+        <h3>함께 활동하기 편한 친구</h3>
+        <p class="section-help">
+          우리 반에서 함께 활동하거나 이야기할 때 편하다고 느끼는 친구를 최대 3명까지 선택해 주세요.
+          떠오르는 친구가 없으면 아무도 선택하지 않아도 됩니다.
+        </p>
+
+        <div class="peer-grid" id="positivePeerGrid">
+          {% for peer in peer_options %}
+            <label class="peer-chip">
+              <input type="checkbox" name="positive_peers" value="{{ peer }}">
+              <span>{{ peer }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="peer-count" id="peerCountText">선택 0명 / 최대 3명</div>
+      </section>
+
+      <button type="submit" class="survey-submit">설문 제출</button>
+    </form>
+  {% endif %}
+</div>
+
+<style>
+  .survey-card {
+    max-width: 760px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 22px;
+    text-align: left;
+    box-shadow: 0 2px 10px rgba(17,24,39,0.05);
+  }
+  .survey-card h2 {
+    margin: 0;
+    text-align: center;
+  }
+  .survey-subtitle {
+    margin: 8px auto 18px;
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.6;
+  }
+  .survey-error {
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-weight: 900;
+  }
+  .survey-done {
+    display: grid;
+    gap: 8px;
+    text-align: center;
+    border: 1px solid #d1fae5;
+    background: #ecfdf5;
+    color: #065f46;
+    border-radius: 12px;
+    padding: 24px 14px;
+    font-weight: 800;
+  }
+  .survey-form {
+    display: grid;
+    gap: 16px;
+  }
+  .student-line {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    color: #374151;
+    font-size: 14px;
+  }
+  .student-line span {
+    color: #6b7280;
+    font-weight: 800;
+  }
+  .survey-section {
+    border: 1px solid #e5e7eb;
+    background: #fbfbfd;
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .survey-section h3 {
+    margin: 0 0 5px;
+    font-size: 17px;
+  }
+  .section-help {
+    margin: 0 0 12px;
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.55;
+  }
+  .question-box {
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 0 0 10px;
+  }
+  .question-box legend {
+    width: 100%;
+    padding: 0;
+    margin-bottom: 10px;
+    font-weight: 900;
+    line-height: 1.45;
+  }
+  .scale-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .scale-row label {
+    display: grid;
+    gap: 5px;
+    justify-items: center;
+    align-content: center;
+    min-height: 62px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #f8fafc;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.25;
+  }
+  .scale-row input {
+    width: 18px;
+    height: 18px;
+  }
+  .field-label {
+    display: grid;
+    gap: 7px;
+    color: #374151;
+    font-weight: 900;
+    line-height: 1.45;
+  }
+  .field-label input,
+  .field-label textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 11px 12px;
+    font: inherit;
+    font-size: 15px;
+    background: #fff;
+  }
+  .peer-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .peer-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 42px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+    padding: 8px 10px;
+    font-weight: 850;
+  }
+  .peer-chip input {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+  .peer-count {
+    margin-top: 8px;
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 900;
+  }
+  .survey-submit {
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    background: #4a6cf7;
+    color: #fff;
+    padding: 13px 16px;
+    font: inherit;
+    font-weight: 950;
+  }
+  @media(max-width: 640px) {
+    .survey-card {
+      padding: 16px;
+    }
+    .scale-row {
+      grid-template-columns: 1fr;
+    }
+    .scale-row label {
+      grid-template-columns: auto 1fr;
+      justify-items: start;
+      min-height: 42px;
+      text-align: left;
+      padding: 8px 10px;
+    }
+    .peer-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
+
+<script>
+(function(){
+  const grid = document.getElementById('positivePeerGrid');
+  const countText = document.getElementById('peerCountText');
+  if (!grid) return;
+  const boxes = Array.from(grid.querySelectorAll('input[type="checkbox"]'));
+  function refresh(){
+    const checked = boxes.filter(b => b.checked);
+    if (countText) countText.textContent = `선택 ${checked.length}명 / 최대 3명`;
+    boxes.forEach(b => {
+      b.disabled = !b.checked && checked.length >= 3;
+    });
+  }
+  boxes.forEach(b => b.addEventListener('change', refresh));
+  refresh();
+})();
+</script>
+{% endblock %}

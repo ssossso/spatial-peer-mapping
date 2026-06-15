@@ -3,5 +3,10 @@
 <div class="card">
   <h1>제출이 완료되었습니다</h1>
   <p style="color:#666; font-weight:600;">내가 바라본 우리 반 활동 결과가 저장되었습니다.</p>
+  {% if followup_survey_enabled %}
+    <div style="margin-top:14px; padding:12px; border-radius:10px; background:#f8fafc; border:1px solid #e5e7eb; color:#374151; font-weight:800; line-height:1.6;">
+      선생님이 안내하는 별도 QR이 있다면, 이어서 짧은 설문에 참여해 주세요.
+    </div>
+  {% endif %}
 </div>
 {% endblock %}
