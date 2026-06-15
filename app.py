@@ -324,6 +324,34 @@ def init_db() -> None:
             "ALTER TABLE classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();",
         ]))
 
+        # -------------------
+        # Migration v7: one-off student follow-up survey + positive peer nominations
+        # -------------------
+        migrations.append((7, [
+            """
+            CREATE TABLE IF NOT EXISTS student_followup_surveys (
+                id SERIAL PRIMARY KEY,
+                class_code TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                student_name TEXT NOT NULL,
+                q1_understand INTEGER,
+                q2_easy_move INTEGER,
+                q3_time_ok INTEGER,
+                q4_low_burden INTEGER,
+                q5_willing_again INTEGER,
+                q6_comment TEXT,
+                positive_peers JSONB,
+                ip TEXT,
+                submitted_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(class_code, session_id, student_name)
+            );
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_student_followup_surveys_class_session
+            ON student_followup_surveys (class_code, session_id);
+            """,
+        ]))
+
 
 
         migrations.sort(key=lambda x: int(x[0]))
@@ -501,10 +529,17 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                     WHERE class_code = :code AND session_id = :sid
                 """), {"code": c.code, "sid": sid}).fetchone()
 
+                followup_row = conn.execute(text("""
+                    SELECT COUNT(*) AS n
+                    FROM student_followup_surveys
+                    WHERE class_code = :code AND session_id = :sid
+                """), {"code": c.code, "sid": sid}).fetchone()
+
                 submitted = int((ss.submitted if ss and ss.submitted is not None else 0) or 0)
                 teacher_submitted = int((tr.submitted if tr and tr.submitted is not None else 0) or 0)
                 similarity = teacher_student_similarity_summary(str(c.code), sid)
                 result_availability = db_get_result_availability(str(c.code), sid)
+                followup_enabled = is_student_followup_survey_sid(sid)
                 sessions.append({
                     "sid": sid,
                     "label": f"{int(sid) - 1}회차",
@@ -531,6 +566,9 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                     "result_min_submitted": int(result_availability.get("min_submitted") or MIN_RESULT_SUBMISSIONS),
                     "result_needed": int(result_availability.get("needed") or 0),
                     "result_message": result_availability.get("message") or "",
+                    "student_followup_enabled": followup_enabled,
+                    "student_followup_submitted": int(followup_row.n or 0) if followup_row else 0,
+                    "student_followup_qr_src": f"/research/class/{c.code}/session/{sid}/student_survey_qr.png" if followup_enabled else "",
                 })
 
             out.append({
@@ -613,6 +651,12 @@ def teacher_student_similarity_summary(class_code: str, sid: str) -> Dict[str, A
 SITE_TITLE = "내가 바라본 우리 반"
 DEFAULT_VISIBLE_SESSION_ID = "2"
 VISIBLE_SESSION_IDS = ["2", "3", "4"]
+STUDENT_FOLLOWUP_SURVEY_SID = (os.environ.get("STUDENT_FOLLOWUP_SURVEY_SID") or "4").strip()
+
+
+def is_student_followup_survey_sid(sid: Any) -> bool:
+    """Return whether the one-off student survey is open for this session."""
+    return str(sid or "").strip() == STUDENT_FOLLOWUP_SURVEY_SID
 
 
 def normalize_visible_session_id(raw: Any) -> str:
@@ -683,6 +727,22 @@ def sheet_upsert_teacher_survey(
         "teacher": teacher_username,
         "class_code": class_code,
         "session": str(sid),
+        "payload": payload or {},
+    })
+
+
+def sheet_upsert_student_followup_survey(
+    class_code: str,
+    sid: str,
+    student_name: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Send one student follow-up survey row to the connected Google Sheet."""
+    return post_to_sheet({
+        "action": "student_followup_survey_upsert",
+        "class_code": class_code,
+        "session": str(sid),
+        "student": student_name,
         "payload": payload or {},
     })
 
@@ -1429,6 +1489,11 @@ def build_research_session_summary(class_code: str, sid: str) -> Dict[str, Any]:
             WHERE class_code = :code AND session_id = :sid
             LIMIT 1
         """), {"code": class_code, "sid": sid}).fetchone()
+        followup = conn.execute(text("""
+            SELECT COUNT(*) AS n
+            FROM student_followup_surveys
+            WHERE class_code = :code AND session_id = :sid
+        """), {"code": class_code, "sid": sid}).fetchone()
 
     return {
         "class_code": class_code,
@@ -1438,6 +1503,8 @@ def build_research_session_summary(class_code: str, sid: str) -> Dict[str, Any]:
         "visible_round": int(sid) - 1 if str(sid).isdigit() else sid,
         "total_students": total,
         "submitted_students": submitted,
+        "student_followup_enabled": is_student_followup_survey_sid(sid),
+        "student_followup_submitted": int(followup.n or 0) if followup else 0,
         "teacher_placement_done": int(tr.n or 0) > 0 if tr else False,
         "exclusions_resolved": bool(getattr(fin, "exclusions_resolved", False)) if fin else False,
         "post_survey_done": (bool(getattr(fin, "survey_submitted", False)) if fin else False) or bool(survey),
@@ -1491,6 +1558,7 @@ def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reaso
             "teacher_placement_runs": [dict(r) for r in teacher_runs] if scope in {"all", "teacher", "pre_survey"} else [],
             "teacher_decisions": [dict(r) for r in teacher_decisions] if scope in {"all", "teacher", "pre_survey"} else [],
             "session_exclusions": rows("SELECT * FROM session_exclusions WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student"} else [],
+            "student_followup_surveys": rows("SELECT * FROM student_followup_surveys WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student"} else [],
             "session_finalizations": rows("SELECT * FROM session_finalizations WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student", "post_survey"} else [],
             "teacher_surveys": rows("SELECT * FROM teacher_surveys WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "post_survey"} else [],
             "analysis_cache": rows("SELECT * FROM analysis_cache WHERE class_code=:code AND session_id=:sid ORDER BY id ASC") if scope in {"all", "student", "teacher"} else [],
@@ -1524,6 +1592,7 @@ def db_archive_and_reset_session(class_code: str, sid: str, reset_by: str, reaso
         if scope in {"all", "student"}:
             conn.execute(text("DELETE FROM student_sessions WHERE class_code=:code AND sid=:sid"), {"code": class_code, "sid": sid})
             conn.execute(text("DELETE FROM session_exclusions WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
+            conn.execute(text("DELETE FROM student_followup_surveys WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
         if scope in {"all", "post_survey"}:
             conn.execute(text("DELETE FROM teacher_surveys WHERE class_code=:code AND session_id=:sid"), {"code": class_code, "sid": sid})
         if scope == "all":
@@ -1587,6 +1656,110 @@ def db_get_student_session(class_code: str, student_name: str, sid: str) -> Opti
         placements_obj = _json_load_maybe(row.placements_json)
 
     return {"placements": placements_obj, "submitted": bool(row.submitted)}
+
+
+def db_validate_student_pin(class_code: str, student_name: str, pin: str) -> bool:
+    """Check an active student's private PIN."""
+    if not engine:
+        return False
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT pin_code
+            FROM students
+            WHERE class_code = :code
+              AND name = :name
+              AND active = TRUE
+            LIMIT 1
+        """), {"code": class_code, "name": student_name, "pin": pin}).fetchone()
+    return bool(row and str(row.pin_code or "").strip() == str(pin or "").strip())
+
+
+def db_get_student_followup_survey(class_code: str, sid: str, student_name: str) -> Optional[Dict[str, Any]]:
+    """Return a saved one-off student follow-up survey."""
+    if not engine:
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT q1_understand, q2_easy_move, q3_time_ok, q4_low_burden, q5_willing_again,
+                   q6_comment, positive_peers, submitted_at
+            FROM student_followup_surveys
+            WHERE class_code = :code AND session_id = :sid AND student_name = :name
+            LIMIT 1
+        """), {"code": class_code, "sid": sid, "name": student_name}).fetchone()
+    if not row:
+        return None
+    if isinstance(row.positive_peers, list):
+        peers = row.positive_peers
+    else:
+        try:
+            peers = json.loads(row.positive_peers or "[]")
+        except Exception:
+            peers = []
+    if not isinstance(peers, list):
+        peers = []
+    return {
+        "q1_understand": row.q1_understand,
+        "q2_easy_move": row.q2_easy_move,
+        "q3_time_ok": row.q3_time_ok,
+        "q4_low_burden": row.q4_low_burden,
+        "q5_willing_again": row.q5_willing_again,
+        "q6_comment": row.q6_comment or "",
+        "positive_peers": peers,
+        "submitted_at": row.submitted_at,
+    }
+
+
+def db_upsert_student_followup_survey(class_code: str, sid: str, student_name: str, payload: Dict[str, Any], ip: str = "") -> None:
+    """Save a one-off student follow-up survey response."""
+    if not engine:
+        raise RuntimeError("DB engine not initialized")
+
+    def as_int(name: str) -> Optional[int]:
+        try:
+            value = int(payload.get(name))
+        except Exception:
+            return None
+        return value if 1 <= value <= 5 else None
+
+    peers = payload.get("positive_peers") or []
+    if not isinstance(peers, list):
+        peers = []
+    peers = [str(p).strip() for p in peers if str(p).strip()][:3]
+
+    params = {
+        "code": class_code,
+        "sid": str(sid),
+        "name": student_name,
+        "q1": as_int("q1_understand"),
+        "q2": as_int("q2_easy_move"),
+        "q3": as_int("q3_time_ok"),
+        "q4": as_int("q4_low_burden"),
+        "q5": as_int("q5_willing_again"),
+        "q6": (payload.get("q6_comment") or "").strip()[:1000],
+        "peers": json.dumps(peers, ensure_ascii=False),
+        "ip": ip or "",
+    }
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT INTO student_followup_surveys
+            (class_code, session_id, student_name,
+             q1_understand, q2_easy_move, q3_time_ok, q4_low_burden, q5_willing_again,
+             q6_comment, positive_peers, ip, submitted_at)
+            VALUES
+            (:code, :sid, :name, :q1, :q2, :q3, :q4, :q5, :q6, CAST(:peers AS jsonb), :ip, NOW())
+            ON CONFLICT (class_code, session_id, student_name)
+            DO UPDATE SET
+              q1_understand = EXCLUDED.q1_understand,
+              q2_easy_move = EXCLUDED.q2_easy_move,
+              q3_time_ok = EXCLUDED.q3_time_ok,
+              q4_low_burden = EXCLUDED.q4_low_burden,
+              q5_willing_again = EXCLUDED.q5_willing_again,
+              q6_comment = EXCLUDED.q6_comment,
+              positive_peers = EXCLUDED.positive_peers,
+              ip = EXCLUDED.ip,
+              submitted_at = NOW()
+        """), params)
 
 
 def db_list_submitted_student_sessions(class_code: str, sid: str) -> List[Dict[str, Any]]:
@@ -2457,6 +2630,42 @@ def research_admin():
 
     overview = db_fetch_class_overview()
     return render_template("research_admin.html", db_ready=True, overview=overview)
+
+
+@app.route("/research/class/<code>/session/<sid>/student_survey_qr.png")
+def research_student_followup_survey_qr(code: str, sid: str):
+    """Admin-only QR image for the one-off student follow-up survey."""
+    guard = require_admin()
+    if guard is not None:
+        return guard
+
+    code = (code or "").upper().strip()
+    sid = (sid or "").strip()
+    if not is_student_followup_survey_sid(sid):
+        return "이 회차에는 학생 설문 QR이 열려 있지 않습니다.", 404
+
+    if engine:
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT 1 FROM classes WHERE code = :code LIMIT 1"), {"code": code}).fetchone()
+        if not row:
+            return "학급을 찾을 수 없습니다.", 404
+
+    base = request.url_root.rstrip("/")
+    target = f"{base}/student/survey/{code}/{sid}"
+
+    try:
+        import qrcode
+    except ModuleNotFoundError:
+        return "QR 코드 생성을 위해 qrcode 라이브러리가 필요합니다.", 500
+
+    img = qrcode.make(target)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+
+    resp = send_file(buf, mimetype="image/png")
+    resp.headers["Cache-Control"] = "private, max-age=300"
+    return resp
 
 
 @app.route("/research/class/<code>/session/<sid>/sync_sheet", methods=["POST"])
@@ -4003,7 +4212,191 @@ def student_write():
 
 @app.route("/student/submitted")
 def student_submitted():
-    return render_template("student_submitted.html")
+    sid = (session.get("sid") or "").strip()
+    return render_template(
+        "student_submitted.html",
+        followup_survey_enabled=is_student_followup_survey_sid(sid),
+    )
+
+
+def student_followup_questions() -> List[Dict[str, str]]:
+    """Return the one-off student follow-up survey questions."""
+    return [
+        {"key": "q1_understand", "text": "친구 이름을 어떻게 배치해야 하는지 쉽게 이해할 수 있었다.", "measure": "안내 이해도"},
+        {"key": "q2_easy_move", "text": "친구 이름을 선택하여 원하는 위치로 가져다 놓기 쉬웠다.", "measure": "조작 편의성"},
+        {"key": "q3_time_ok", "text": "활동을 마치는 데 시간이 많이 걸리지 않았다.", "measure": "시간 적절성"},
+        {"key": "q4_low_burden", "text": "활동에 참여하는 것이 부담스럽지 않았다.", "measure": "심리적 부담"},
+        {"key": "q5_willing_again", "text": "다음에도 이와 같은 활동에 참여할 수 있다.", "measure": "재참여 의향"},
+    ]
+
+
+@app.route("/student/survey/<code>/<sid>", methods=["GET", "POST"])
+def student_followup_survey(code: str, sid: str):
+    """One-off student survey shown only for the configured session."""
+    code = (code or "").upper().strip()
+    sid = (sid or "").strip()
+    display_sid = int(sid) - 1 if sid.isdigit() else sid
+
+    if not is_student_followup_survey_sid(sid):
+        return render_template(
+            "student_followup_survey.html",
+            unavailable=True,
+            done=False,
+            entry_required=False,
+            not_ready=False,
+            code=code,
+            sid=sid,
+            display_sid=display_sid,
+            name="",
+            questions=student_followup_questions(),
+            peer_options=[],
+            error="이 회차에는 학생 설문이 열려 있지 않습니다.",
+        )
+
+    if not engine:
+        return "DB 연결이 설정되지 않아 학생 설문을 저장할 수 없습니다.", 500
+
+    students = db_get_students_in_class(code)
+    names = [s["name"] for s in students if s.get("name")]
+    if not names:
+        return "학급을 찾을 수 없습니다.", 404
+
+    def render_entry(error: str = ""):
+        return render_template(
+            "student_followup_survey.html",
+            unavailable=False,
+            done=False,
+            entry_required=True,
+            not_ready=False,
+            code=code,
+            sid=sid,
+            display_sid=display_sid,
+            name="",
+            questions=student_followup_questions(),
+            peer_options=[],
+            error=error,
+        )
+
+    if request.method == "POST" and (request.form.get("form_mode") or "") == "enter":
+        student_name = (request.form.get("name") or "").strip()
+        pin = (request.form.get("pin") or "").strip()
+        if student_name not in names:
+            return render_entry("학생 명단에 없는 이름입니다.")
+        if not (len(pin) == 6 and pin.isdigit()):
+            return render_entry("개인 코드는 6자리 숫자여야 합니다.")
+        if not db_validate_student_pin(code, student_name, pin):
+            return render_entry("개인 코드(PIN)가 올바르지 않습니다.")
+        session["code"] = code
+        session["name"] = student_name
+        session["sid"] = sid
+        session["selected_class"] = code
+        session["selected_session"] = sid
+        return redirect(f"/student/survey/{code}/{sid}")
+
+    student_name = (session.get("name") or "").strip()
+    session_code = (session.get("code") or "").upper().strip()
+    session_sid = (session.get("sid") or "").strip()
+    if session_code != code or session_sid != sid or student_name not in names:
+        return render_entry()
+
+    placement_session = db_get_student_session(code, student_name, sid)
+    if not placement_session or not placement_session.get("submitted"):
+        return render_template(
+            "student_followup_survey.html",
+            unavailable=False,
+            done=False,
+            entry_required=False,
+            not_ready=True,
+            code=code,
+            sid=sid,
+            display_sid=display_sid,
+            name=student_name,
+            questions=student_followup_questions(),
+            peer_options=[],
+            error="먼저 학생 배치 활동을 제출한 뒤 설문에 참여해 주세요.",
+        )
+
+    existing = db_get_student_followup_survey(code, sid, student_name)
+    if existing and request.method != "POST":
+        return render_template(
+            "student_followup_survey.html",
+            unavailable=False,
+            done=True,
+            entry_required=False,
+            not_ready=False,
+            code=code,
+            sid=sid,
+            display_sid=display_sid,
+            name=student_name,
+            questions=student_followup_questions(),
+            peer_options=[],
+            error="",
+        )
+
+    peer_options = [n for n in names if n != student_name]
+    if request.method == "POST":
+        payload: Dict[str, Any] = {}
+        missing = []
+        for q in student_followup_questions():
+            raw = (request.form.get(q["key"]) or "").strip()
+            try:
+                value = int(raw)
+            except Exception:
+                value = 0
+            if value < 1 or value > 5:
+                missing.append(q["key"])
+            payload[q["key"]] = value
+        if missing:
+            return render_template(
+                "student_followup_survey.html",
+                unavailable=False,
+                done=False,
+                entry_required=False,
+                not_ready=False,
+                code=code,
+                sid=sid,
+                display_sid=display_sid,
+                name=student_name,
+                questions=student_followup_questions(),
+                peer_options=peer_options,
+                error="1~5번 문항에 모두 응답해 주세요.",
+            )
+
+        selected_peers = []
+        seen = set()
+        for peer in request.form.getlist("positive_peers"):
+            peer = str(peer or "").strip()
+            if peer and peer in peer_options and peer not in seen:
+                selected_peers.append(peer)
+                seen.add(peer)
+        selected_peers = selected_peers[:3]
+        payload["positive_peers"] = selected_peers
+        payload["q6_comment"] = (request.form.get("q6_comment") or "").strip()
+
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr) or ""
+        db_upsert_student_followup_survey(code, sid, student_name, payload, ip=ip)
+        try:
+            sheet_payload = dict(payload)
+            sheet_payload["ip"] = ip
+            sheet_upsert_student_followup_survey(code, sid, student_name, sheet_payload)
+        except Exception:
+            app.logger.exception("student follow-up survey sheet upsert failed")
+        return redirect(f"/student/survey/{code}/{sid}")
+
+    return render_template(
+        "student_followup_survey.html",
+        unavailable=False,
+        done=False,
+        entry_required=False,
+        not_ready=False,
+        code=code,
+        sid=sid,
+        display_sid=display_sid,
+        name=student_name,
+        questions=student_followup_questions(),
+        peer_options=peer_options,
+        error="",
+    )
 
 
 # -------------------------
