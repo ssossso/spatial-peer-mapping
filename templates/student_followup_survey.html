@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="survey-card">
-  <h2>{{ display_sid }}회차 짧은 설문</h2>
+  <h2>{{ display_sid }}회차 학생 설문</h2>
   <p class="survey-subtitle">
-    배치 활동을 마친 뒤 느낀 점을 짧게 알려 주세요.
-    정답은 없으며, 선택한 내용은 친구들에게 공개되지 않습니다.
+    배치 활동을 마친 뒤 생각을 짧게 알려 주세요.<br>
+    선택한 친구 이름과 답변은 다른 친구에게 공개되지 않습니다.
   </p>
 
   {% if error %}
@@ -24,7 +24,7 @@
   {% elif not_ready %}
     <div class="survey-done">
       <b>먼저 배치 활동을 제출해 주세요.</b>
-      <span>배치 활동을 저장한 뒤, 선생님이 안내한 설문 QR로 다시 들어오면 됩니다.</span>
+      <span>배치 활동을 저장한 뒤 선생님이 안내한 설문 QR로 다시 들어오면 됩니다.</span>
     </div>
   {% elif entry_required %}
     <form method="post" class="survey-form">
@@ -69,16 +69,21 @@
         {% endfor %}
 
         <label class="field-label">
-          6. 활동하면서 좋았던 점이나 고치면 좋을 점이 있다면 자유롭게 써 주세요.
+          6. 활동하면서 좋았던 점이 있었다면 써 주세요. 없으면 쓰지 않아도 됩니다.
           <textarea name="q6_comment" rows="4" maxlength="1000" placeholder="선택 문항입니다."></textarea>
+        </label>
+
+        <label class="field-label">
+          7. 활동하면서 이런 점은 고치면 좋겠다고 생각한 점이 있었다면 써 주세요. 없으면 쓰지 않아도 됩니다.
+          <textarea name="q7_improvement" rows="4" maxlength="1000" placeholder="선택 문항입니다."></textarea>
         </label>
       </section>
 
       <section class="survey-section">
-        <h3>내가 가깝고 친하다고 느끼는 친구</h3>
+        <h3>가깝고 친하다고 느끼는 친구</h3>
         <p class="section-help">
-          우리 반에서 내가 가깝고 친하다고 느끼는 친구를 순서와 상관없이 선택해 주세요.
-          최대 3명까지 선택할 수 있으며 선택하지 않고 넘어가도 괜찮습니다. 선택한 내용은 비밀이 보장되면 다른 친구들에게 절대 공개되지 않습니다.
+          우리 반에서 내가 가깝고 친하다고 느끼는 친구를 최대 3명까지 선택해 주세요.<br>
+          떠오르는 친구가 없으면 아무도 선택하지 않아도 됩니다.
         </p>
 
         <div class="peer-grid" id="positivePeerGrid">
@@ -289,7 +294,9 @@
   const grid = document.getElementById('positivePeerGrid');
   const countText = document.getElementById('peerCountText');
   if (!grid) return;
+
   const boxes = Array.from(grid.querySelectorAll('input[type="checkbox"]'));
+
   function refresh(){
     const checked = boxes.filter(b => b.checked);
     if (countText) countText.textContent = `선택 ${checked.length}명 / 최대 3명`;
@@ -297,6 +304,7 @@
       b.disabled = !b.checked && checked.length >= 3;
     });
   }
+
   boxes.forEach(b => b.addEventListener('change', refresh));
   refresh();
 })();
