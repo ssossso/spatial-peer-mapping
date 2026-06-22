@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 {% set display_sid = sid|int - 1 %}
+{% set display_code = display_code|default(code) %}
+{% set research_mode = research_mode|default(false) %}
 
 <div class="card" style="max-width:1120px; text-align:left;">
   <h2 style="margin:0 0 6px 0; text-align:center;">{{ display_sid }}회차 관계 지도 결과</h2>
   <p style="margin:0 0 14px 0; text-align:center; color:#6b7280; font-weight:800;">
-    {{ cls.name }} / 학급 코드 <b>{{ code }}</b>
+    {{ cls.name }} / 학급 코드 <b>{{ display_code }}</b>
   </p>
 
   <div class="result-grid">
@@ -108,11 +110,16 @@
   </details>
 
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-    <a class="pill primary" id="backToRoundLink" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
-    <button type="button" class="pill primary" id="btnOpenTeacherSurvey">교사 설문 참여</button>
+    {% if research_mode %}
+      <a class="pill primary" id="backToRoundLink" href="/research">연구 대시보드로 돌아가기</a>
+    {% else %}
+      <a class="pill primary" id="backToRoundLink" href="/teacher/class/{{ code }}/v2?sid={{ sid }}&open=1">회차 화면으로 돌아가기</a>
+      <button type="button" class="pill primary" id="btnOpenTeacherSurvey">교사 설문 참여</button>
+    {% endif %}
   </div>
 
-  <section class="survey-box" id="teacherSurveyBox" style="display:none;">
+  {% if not research_mode %}
+    <section class="survey-box" id="teacherSurveyBox" style="display:none;">
     <div class="panel-head">
       <div>
         <div class="section-title">교사 설문</div>
@@ -190,19 +197,22 @@
     <div class="caution-box" id="surveyGateMsg" style="display:none; margin-top:10px;">
       <p>회차 화면에서 참여 제외 학생 확인을 먼저 완료해 주세요.</p>
     </div>
-  </section>
+    </section>
+  {% endif %}
 
 </div>
 
-<div class="modal-backdrop" id="resultModal" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="resultModalTitle">
-    <div class="modal-hd" id="resultModalTitle">안내</div>
-    <div class="modal-bd" id="resultModalBody">교사 설문에 참여해주세요.</div>
-    <div class="modal-actions">
-      <button type="button" class="pill primary" id="resultModalOk">확인</button>
+{% if not research_mode %}
+  <div class="modal-backdrop" id="resultModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="resultModalTitle">
+      <div class="modal-hd" id="resultModalTitle">안내</div>
+      <div class="modal-bd" id="resultModalBody">교사 설문에 참여해주세요.</div>
+      <div class="modal-actions">
+        <button type="button" class="pill primary" id="resultModalOk">확인</button>
+      </div>
     </div>
   </div>
-</div>
+{% endif %}
 
 <style>
   .result-grid {
@@ -692,7 +702,9 @@
 (function(){
   const code = "{{ code }}";
   const sid = "{{ sid }}";
+  const researchMode = {{ research_mode|tojson }};
   const initialPayload = {{ spm_payload|tojson }};
+  const previousPayload = {{ previous_spm_payload|default(none)|tojson }};
   const initialError = {{ spm_error|tojson }};
   const initialState = {{ state|tojson }};
   const API_BASE = `/api/v2/class/${code}/session/${sid}`;
@@ -914,6 +926,13 @@
   }
 
   async function sendAiRequest(payload, displayQuestion){
+    if (researchMode) {
+      clearAiSuggestions();
+      appendAiMessage(displayQuestion || '질문', 'user');
+      appendAiMessage('논문용 비식별 화면에서는 관계 설명 도우미 호출을 사용하지 않습니다. 이 화면은 결과 모양 확인과 논문 캡처용으로만 사용해 주세요.', 'muted-msg');
+      appendAiSuggestions(aiStudentSelect && aiStudentSelect.value ? studentAiQuestions : classAiQuestions);
+      return;
+    }
     const classQuestionTypes = [
       'overview', 'class_summary', 'class_counts', 'class_areas', 'class_participation',
       'dense_meaning', 'boundary_meaning', 'distributed_meaning',
@@ -1286,6 +1305,12 @@
   }
 
   function loadPreviousComparison(currentPayload){
+    if (researchMode) {
+      if (previousPayload && previousPayload.ok) {
+        renderChangeSummary(currentPayload, previousPayload);
+      }
+      return;
+    }
     const sidNum = Number(sid);
     if (!Number.isFinite(sidNum) || sidNum <= 2) return;
     const prevSid = String(sidNum - 1);
@@ -1306,21 +1331,23 @@
     drawMap([]);
   }
 
-  fetch(`/analysis/class/${code}/${sid}/spm_result.json`)
-    .then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    })
-    .then(payload => {
-      render(payload);
-      loadPreviousComparison(payload);
-    })
-    .catch((err) => {
-      if (!initialPayload || !initialPayload.ok) {
-        text('summaryShort', `결과를 불러오지 못했습니다: ${err.message || err}`);
-        drawMap([]);
-      }
-    });
+  if (!researchMode) {
+    fetch(`/analysis/class/${code}/${sid}/spm_result.json`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(payload => {
+        render(payload);
+        loadPreviousComparison(payload);
+      })
+      .catch((err) => {
+        if (!initialPayload || !initialPayload.ok) {
+          text('summaryShort', `결과를 불러오지 못했습니다: ${err.message || err}`);
+          drawMap([]);
+        }
+      });
+  }
 
   const surveyFormBody = document.getElementById('surveyFormBody');
   const surveyDoneBox = document.getElementById('surveyDoneBox');
