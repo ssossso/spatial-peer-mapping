@@ -340,6 +340,7 @@ def init_db() -> None:
                 q4_low_burden INTEGER,
                 q5_willing_again INTEGER,
                 q6_comment TEXT,
+                q7_improvement TEXT,
                 positive_peers JSONB,
                 ip TEXT,
                 submitted_at TIMESTAMP DEFAULT NOW(),
@@ -350,6 +351,13 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS ix_student_followup_surveys_class_session
             ON student_followup_surveys (class_code, session_id);
             """,
+        ]))
+
+        # -------------------
+        # Migration v8: split student free-response survey item into good/improve prompts
+        # -------------------
+        migrations.append((8, [
+            "ALTER TABLE student_followup_surveys ADD COLUMN IF NOT EXISTS q7_improvement TEXT;",
         ]))
 
 
@@ -486,6 +494,16 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
             ORDER BY COALESCE(archived, FALSE) ASC, id DESC
         """)).fetchall()
 
+        alias_rows = conn.execute(text("""
+            SELECT code
+            FROM classes
+            ORDER BY created_at ASC, id ASC, code ASC
+        """)).fetchall()
+        research_aliases = {
+            str(row.code): f"C{idx + 1:02d}"
+            for idx, row in enumerate(alias_rows)
+        }
+
         out: List[Dict[str, Any]] = []
         for c in classes:
             student_cnt = conn.execute(text("""
@@ -543,6 +561,7 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
                 sessions.append({
                     "sid": sid,
                     "label": f"{int(sid) - 1}회차",
+                    "research_result_url": f"/research/class/{c.code}/result/{sid}",
                     "student_total": int(student_cnt or 0),
                     "student_submitted": submitted,
                     "student_progress_pct": round((submitted / int(student_cnt or 1)) * 100),
@@ -573,6 +592,7 @@ def db_fetch_class_overview() -> List[Dict[str, Any]]:
 
             out.append({
                 "code": c.code,
+                "research_id": research_aliases.get(str(c.code), "C??"),
                 "name": c.name,
                 "teacher_username": c.teacher_username,
                 "created_at": c.created_at,
@@ -1681,7 +1701,7 @@ def db_get_student_followup_survey(class_code: str, sid: str, student_name: str)
     with engine.connect() as conn:
         row = conn.execute(text("""
             SELECT q1_understand, q2_easy_move, q3_time_ok, q4_low_burden, q5_willing_again,
-                   q6_comment, positive_peers, submitted_at
+                   q6_comment, q7_improvement, positive_peers, submitted_at
             FROM student_followup_surveys
             WHERE class_code = :code AND session_id = :sid AND student_name = :name
             LIMIT 1
@@ -1704,6 +1724,7 @@ def db_get_student_followup_survey(class_code: str, sid: str, student_name: str)
         "q4_low_burden": row.q4_low_burden,
         "q5_willing_again": row.q5_willing_again,
         "q6_comment": row.q6_comment or "",
+        "q7_improvement": row.q7_improvement or "",
         "positive_peers": peers,
         "submitted_at": row.submitted_at,
     }
@@ -1736,6 +1757,7 @@ def db_upsert_student_followup_survey(class_code: str, sid: str, student_name: s
         "q4": as_int("q4_low_burden"),
         "q5": as_int("q5_willing_again"),
         "q6": (payload.get("q6_comment") or "").strip()[:1000],
+        "q7": (payload.get("q7_improvement") or "").strip()[:1000],
         "peers": json.dumps(peers, ensure_ascii=False),
         "ip": ip or "",
     }
@@ -1745,9 +1767,9 @@ def db_upsert_student_followup_survey(class_code: str, sid: str, student_name: s
             INSERT INTO student_followup_surveys
             (class_code, session_id, student_name,
              q1_understand, q2_easy_move, q3_time_ok, q4_low_burden, q5_willing_again,
-             q6_comment, positive_peers, ip, submitted_at)
+             q6_comment, q7_improvement, positive_peers, ip, submitted_at)
             VALUES
-            (:code, :sid, :name, :q1, :q2, :q3, :q4, :q5, :q6, CAST(:peers AS jsonb), :ip, NOW())
+            (:code, :sid, :name, :q1, :q2, :q3, :q4, :q5, :q6, :q7, CAST(:peers AS jsonb), :ip, NOW())
             ON CONFLICT (class_code, session_id, student_name)
             DO UPDATE SET
               q1_understand = EXCLUDED.q1_understand,
@@ -1756,6 +1778,7 @@ def db_upsert_student_followup_survey(class_code: str, sid: str, student_name: s
               q4_low_burden = EXCLUDED.q4_low_burden,
               q5_willing_again = EXCLUDED.q5_willing_again,
               q6_comment = EXCLUDED.q6_comment,
+              q7_improvement = EXCLUDED.q7_improvement,
               positive_peers = EXCLUDED.positive_peers,
               ip = EXCLUDED.ip,
               submitted_at = NOW()
@@ -2683,6 +2706,66 @@ def research_sync_session_sheet(code: str, sid: str):
     if resp.get("status") != "ok":
         return jsonify({"ok": False, "error": "SHEET_ERROR", "sheet": resp}), 500
     return jsonify({"ok": True, "sheet": resp, "payload": payload})
+
+
+@app.route("/research/class/<code>/result/<sid>")
+def research_anonymized_session_result(code: str, sid: str):
+    """Show an anonymized class/session result page for research screenshots."""
+    guard = require_admin()
+    if guard is not None:
+        return guard
+    if not engine:
+        return render_template(
+            "research_result.html",
+            db_ready=False,
+            unavailable=True,
+            availability={"message": "DB 연결이 설정되지 않았습니다."},
+            research_class_id="C??",
+            sid=sid,
+            spm_payload=None,
+            spm_error=None,
+        ), 500
+
+    code = (code or "").upper().strip()
+    sid = normalize_visible_session_id(sid)
+    class_alias = research_class_alias_map().get(code, "C??")
+
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT 1 FROM classes WHERE code = :code LIMIT 1"), {"code": code}).fetchone()
+    if not row:
+        return "학급을 찾을 수 없습니다.", 404
+
+    availability = db_get_result_availability(code, sid)
+    if not availability.get("available"):
+        return render_template(
+            "research_result.html",
+            db_ready=True,
+            unavailable=True,
+            availability=availability,
+            research_class_id=class_alias,
+            sid=sid,
+            spm_payload=None,
+            spm_error=None,
+        ), 409
+
+    spm_payload = None
+    spm_error = None
+    try:
+        spm_payload = build_research_spm_result_payload(code, sid)
+    except Exception as e:
+        app.logger.exception("Research SPM payload failed for class=%s sid=%s", code, sid)
+        spm_error = str(e)
+
+    return render_template(
+        "research_result.html",
+        db_ready=True,
+        unavailable=False,
+        availability=availability,
+        research_class_id=class_alias,
+        sid=sid,
+        spm_payload=spm_payload,
+        spm_error=spm_error,
+    )
 
 
 @app.route("/research/class/<code>/rename", methods=["POST"])
@@ -4224,9 +4307,9 @@ def student_followup_questions() -> List[Dict[str, str]]:
     return [
         {"key": "q1_understand", "text": "친구 이름을 어떻게 배치해야 하는지 쉽게 이해할 수 있었다.", "measure": "안내 이해도"},
         {"key": "q2_easy_move", "text": "친구 이름을 선택하여 원하는 위치로 가져다 놓기 쉬웠다.", "measure": "조작 편의성"},
-        {"key": "q3_time_ok", "text": "활동을 마치는 데 시간이 많이 걸리지 않았다.", "measure": "시간 적절성"},
-        {"key": "q4_low_burden", "text": "활동에 참여하는 것이 부담스럽지 않았다.", "measure": "심리적 부담"},
-        {"key": "q5_willing_again", "text": "다음에도 이와 같은 활동에 참여할 수 있다.", "measure": "재참여 의향"},
+        {"key": "q3_time_ok", "text": "활동을 하는 데 걸린 시간이 적당했다.", "measure": "시간 적절성"},
+        {"key": "q4_low_burden", "text": "활동에 참여하는 것이 힘들지 않았다.", "measure": "심리적 부담"},
+        {"key": "q5_willing_again", "text": "다음에도 이런 활동에 참여해도 괜찮다고 생각한다.", "measure": "재참여 의향"},
     ]
 
 
@@ -4372,6 +4455,7 @@ def student_followup_survey(code: str, sid: str):
         selected_peers = selected_peers[:3]
         payload["positive_peers"] = selected_peers
         payload["q6_comment"] = (request.form.get("q6_comment") or "").strip()
+        payload["q7_improvement"] = (request.form.get("q7_improvement") or "").strip()
 
         ip = request.headers.get("X-Forwarded-For", request.remote_addr) or ""
         db_upsert_student_followup_survey(code, sid, student_name, payload, ip=ip)
@@ -5521,6 +5605,110 @@ def build_spm_result_payload(class_code: str, sid: str, alpha: float = 0.6, beta
         "summary": summary,
         "kmeans_optional": kmeans_optional,
     }
+
+
+def research_class_alias_map() -> Dict[str, str]:
+    """Return stable research class IDs such as C01, C02 for all classes."""
+    if not engine:
+        return {}
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT code
+            FROM classes
+            ORDER BY created_at ASC, id ASC, code ASC
+        """)).fetchall()
+    return {
+        str(row.code): f"C{idx + 1:02d}"
+        for idx, row in enumerate(rows)
+    }
+
+
+def _research_student_alias_from_no(class_alias: str, student_no: str, fallback_index: int, used: set) -> str:
+    """Create a non-identifying student ID, preferring the existing class number."""
+    raw = str(student_no or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits:
+        try:
+            n = int(digits)
+        except Exception:
+            n = fallback_index + 1
+    else:
+        n = fallback_index + 1
+
+    base = f"{class_alias}_S{max(1, n):02d}"
+    alias = base
+    duplicate = 2
+    while alias in used:
+        alias = f"{base}_{duplicate}"
+        duplicate += 1
+    used.add(alias)
+    return alias
+
+
+def build_research_student_alias_map(class_code: str, class_alias: str) -> Dict[str, str]:
+    """Map real student names to research-only IDs without exposing names."""
+    students = db_get_students_in_class(class_code)
+    mapping: Dict[str, str] = {}
+    used: set = set()
+    for idx, student in enumerate(students):
+        name = (student.get("name") or "").strip()
+        if not name:
+            continue
+        mapping[name] = _research_student_alias_from_no(class_alias, student.get("no") or "", idx, used)
+    return mapping
+
+
+def build_research_spm_result_payload(class_code: str, sid: str) -> Dict[str, Any]:
+    """Build an anonymized SPM payload for research/admin result pages."""
+    class_alias = research_class_alias_map().get(class_code, "C??")
+    alias_map = build_research_student_alias_map(class_code, class_alias)
+    fallback_aliases: Dict[str, str] = {}
+    used_aliases = set(alias_map.values())
+
+    def alias_name(name: Any) -> str:
+        raw = str(name or "").strip()
+        if raw in alias_map:
+            return alias_map[raw]
+        if raw not in fallback_aliases:
+            n = len(alias_map) + len(fallback_aliases) + 1
+            alias = f"{class_alias}_S{n:02d}"
+            while alias in used_aliases:
+                n += 1
+                alias = f"{class_alias}_S{n:02d}"
+            used_aliases.add(alias)
+            fallback_aliases[raw] = alias
+        return fallback_aliases[raw]
+
+    payload = json.loads(json.dumps(build_spm_result_payload(class_code, sid), ensure_ascii=False))
+    payload["class_code"] = class_alias
+    payload["research_class_id"] = class_alias
+    payload["privacy_mode"] = "research_anonymized"
+
+    for student in payload.get("students") or []:
+        student_id = alias_name(student.get("name"))
+        student["student_id"] = student_id
+        student["name"] = student_id
+
+    for cluster in payload.get("clusters") or []:
+        cluster["members"] = [alias_name(name) for name in cluster.get("members") or []]
+
+    payload["outliers"] = [alias_name(name) for name in payload.get("outliers") or []]
+    payload["distributed"] = [alias_name(name) for name in payload.get("distributed") or []]
+    payload["boundaries"] = [alias_name(name) for name in payload.get("boundaries") or []]
+
+    matrix = payload.get("distance_matrix") or {}
+    matrix["names"] = [alias_name(name) for name in matrix.get("names") or []]
+    payload["distance_matrix"] = matrix
+
+    kmeans = payload.get("kmeans_optional") or {}
+    for group in kmeans.get("groups") or []:
+        group["members"] = [alias_name(name) for name in group.get("members") or []]
+    for point in kmeans.get("points") or []:
+        point["student_id"] = alias_name(point.get("name"))
+        point["name"] = point["student_id"]
+    payload["kmeans_optional"] = kmeans
+
+    return payload
 
 
 def build_spm_kmeans_optional(names: List[str], points: List[Tuple[float, float]]) -> Dict[str, Any]:
