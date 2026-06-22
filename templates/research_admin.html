@@ -27,7 +27,7 @@
               {{ c.name }}
               {% if c.archived %}<em class="state-badge">숨김</em>{% endif %}
             </span>
-            <span class="class-meta">{{ c.code }} · {{ c.teacher_username }}</span>
+            <span class="class-meta">연구 ID {{ c.research_id }} · {{ c.code }} · {{ c.teacher_username }}</span>
             <span class="class-meta">학생 {{ c.student_count }}명</span>
           </button>
         {% endfor %}
@@ -42,7 +42,7 @@
                   <span data-class-name-display="{{ c.code }}">{{ c.name }}</span>
                   {% if c.archived %}<em class="state-badge">숨김 처리됨</em>{% endif %}
                 </h3>
-                <p>{{ c.code }} · {{ c.teacher_username }} · 학생 {{ c.student_count }}명</p>
+                <p>연구 ID {{ c.research_id }} · {{ c.code }} · {{ c.teacher_username }} · 학생 {{ c.student_count }}명</p>
                 {% if c.archived %}
                   <p class="archive-state">
                     일반 학급 목록에서 숨겨진 상태입니다.
@@ -139,8 +139,10 @@
                   <div class="action-row">
                     {% if s.result_available %}
                       <a class="btn btn-primary" href="/teacher/class/{{ c.code }}/result/{{ s.sid }}" target="_blank" rel="noopener noreferrer">결과 페이지 보기</a>
+                      <a class="btn" href="{{ s.research_result_url }}" target="_blank" rel="noopener noreferrer">논문용 결과</a>
                     {% else %}
                       <span class="btn is-disabled" title="{{ s.result_message }}">결과 페이지 보기</span>
+                      <span class="btn is-disabled" title="{{ s.result_message }}">논문용 결과</span>
                     {% endif %}
                     <button type="button" class="btn" data-sync-sheet data-code="{{ c.code }}" data-sid="{{ s.sid }}">구글 시트 저장</button>
                     <button type="button" class="btn danger" data-reset-session data-reset-scope="all" data-code="{{ c.code }}" data-sid="{{ s.sid }}" data-label="{{ s.label }} 전체">전체 초기화</button>

@@ -1,0 +1,630 @@
+{% extends "base.html" %}
+{% block content %}
+{% set display_sid = sid|int - 1 %}
+
+<div class="research-result-shell">
+  <div class="top-actions">
+    <a class="pill" href="/research">연구 대시보드로 돌아가기</a>
+  </div>
+
+  <header class="paper-head">
+    <p class="eyebrow">논문 작성용 비식별 결과 화면</p>
+    <h2>{{ research_class_id }} · {{ display_sid }}회차 관계 지도 결과</h2>
+    <p>학생 이름과 실제 학급 정보는 표시하지 않고, 연구용 ID만 사용합니다.</p>
+  </header>
+
+  {% if unavailable %}
+    <section class="notice-card">
+      <b>아직 결과를 생성할 수 없습니다.</b>
+      <span>{{ availability.message or "학생 배치 데이터가 더 필요합니다." }}</span>
+    </section>
+  {% elif spm_error %}
+    <section class="notice-card error">
+      <b>결과 생성 중 오류가 발생했습니다.</b>
+      <span>{{ spm_error }}</span>
+    </section>
+  {% else %}
+    <div class="result-layout">
+      <section class="map-panel">
+        <div class="panel-head">
+          <div>
+            <div class="section-title">관계 지도</div>
+            <div class="subtitle">점은 학생 ID, 색과 모양은 관계 지도 속 위치 유형을 뜻합니다.</div>
+          </div>
+          <span id="generatedAt" class="status">-</span>
+        </div>
+
+        <canvas id="researchCanvas" width="820" height="540" class="map"></canvas>
+
+        <div class="legend">
+          <span><b class="dot core"></b>밀집형</span>
+          <span><b class="dot boundary"></b>경계형</span>
+          <span><b class="dot outlier"></b>분산형</span>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <div class="metric-row">
+          <div class="metric-box">
+            <span>참여</span>
+            <b><span id="nSubmitted">-</span>/<span id="nStudents">-</span></b>
+          </div>
+          <div class="metric-box">
+            <span>밀집 영역</span>
+            <b id="nClusters">-</b>
+          </div>
+        </div>
+
+        <section class="summary-box">
+          <div class="section-title">요약</div>
+          <p id="summaryShort">-</p>
+        </section>
+
+        <section class="summary-box">
+          <div class="section-title">관계 지도 속 위치</div>
+          <div class="group-list">
+            <div>
+              <span>밀집형</span>
+              <div id="coreList" class="chip-list">-</div>
+            </div>
+            <div>
+              <span>경계형</span>
+              <div id="boundaryList" class="chip-list">-</div>
+            </div>
+            <div>
+              <span>분산형</span>
+              <div id="outlierList" class="chip-list">-</div>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="table-panel">
+      <div class="section-title">학생 ID별 요약</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>학생 ID</th>
+              <th>유형</th>
+              <th>영역</th>
+              <th>x</th>
+              <th>y</th>
+            </tr>
+          </thead>
+          <tbody id="studentRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details class="table-panel">
+      <summary class="section-title">관계 집단 간단 보기</summary>
+      <div id="kmeansRows" class="group-cards"></div>
+    </details>
+
+    <details class="table-panel">
+      <summary class="section-title">최종 거리 행렬</summary>
+      <div class="table-wrap matrix-wrap">
+        <table id="distanceMatrixTable"></table>
+      </div>
+    </details>
+
+    <section class="caution-box">
+      이 화면은 논문 작성과 연구 검토를 위한 비식별 화면입니다. 결과는 학생 개인을 진단하거나 관계 상태를 확정하기 위한 것이 아니라, 학생 인식 기반 공간 배치 결과를 바탕으로 학급 관계 구조를 이해하기 위한 참고 자료입니다.
+    </section>
+  {% endif %}
+</div>
+
+<style>
+  .research-result-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    text-align: left;
+  }
+  .top-actions {
+    margin-bottom: 10px;
+  }
+  .paper-head,
+  .map-panel,
+  .side-panel,
+  .table-panel,
+  .notice-card,
+  .caution-box {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+  }
+  .paper-head {
+    padding: 18px 20px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .paper-head h2 {
+    margin: 3px 0 6px;
+  }
+  .paper-head p {
+    margin: 0;
+    color: #6b7280;
+    font-weight: 800;
+  }
+  .eyebrow {
+    color: #4a6cf7 !important;
+    font-size: 13px;
+    font-weight: 950 !important;
+  }
+  .result-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 14px;
+  }
+  .map-panel,
+  .side-panel,
+  .table-panel,
+  .notice-card {
+    padding: 14px;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .section-title {
+    font-weight: 950;
+    margin: 0;
+  }
+  .subtitle {
+    margin-top: 3px;
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .map {
+    width: 100%;
+    height: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    color: #374151;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .dot {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    margin-right: 5px;
+    vertical-align: -1px;
+  }
+  .dot.core { background: #111827; }
+  .dot.boundary { background: #9ca3af; border: 1px dashed #4b5563; }
+  .dot.outlier { background: #fff; border: 2px solid #111827; }
+  .metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .metric-box,
+  .summary-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fbfbfd;
+    padding: 10px;
+  }
+  .metric-box span {
+    display: block;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .metric-box b {
+    display: block;
+    margin-top: 3px;
+    color: #111827;
+    font-size: 22px;
+  }
+  .summary-box {
+    margin-top: 10px;
+  }
+  .summary-box p {
+    margin: 7px 0 0;
+    color: #374151;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.55;
+  }
+  .group-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .group-list span {
+    display: block;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 900;
+    margin-bottom: 5px;
+  }
+  .chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: #fff;
+    color: #111827;
+    font-size: 13px;
+    font-weight: 900;
+  }
+  .table-panel {
+    margin-top: 14px;
+  }
+  .table-panel summary {
+    cursor: pointer;
+  }
+  .table-wrap {
+    overflow: auto;
+    margin-top: 10px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th,
+  td {
+    border-bottom: 1px solid #eef2f7;
+    padding: 8px 9px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  th {
+    color: #374151;
+    background: #f8fafc;
+    font-weight: 950;
+  }
+  td {
+    color: #111827;
+    font-weight: 800;
+  }
+  .matrix-wrap th,
+  .matrix-wrap td {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .group-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .group-card {
+    border: 1px solid #eef2f7;
+    border-radius: 10px;
+    background: #fbfbfd;
+    padding: 10px;
+  }
+  .group-card b {
+    display: block;
+    margin-bottom: 5px;
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #111827;
+    font-weight: 900;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .notice-card {
+    display: grid;
+    gap: 6px;
+    color: #374151;
+    font-weight: 850;
+  }
+  .notice-card.error {
+    color: #991b1b;
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+  .caution-box {
+    margin-top: 14px;
+    padding: 10px 12px;
+    color: #6b7280;
+    background: #f4f6fa;
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.5;
+  }
+  @media(max-width: 900px) {
+    .result-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+{% if not unavailable and not spm_error %}
+<script>
+(function(){
+  const payload = {{ spm_payload|tojson }};
+  const canvas = document.getElementById('researchCanvas');
+  const ctx = canvas.getContext('2d');
+  const palette = ['#111827', '#4b5563', '#6b7280', '#374151', '#9ca3af', '#1f2937'];
+
+  function text(id, value){
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function clusterColor(clusterId){
+    const n = Number(clusterId);
+    if (!Number.isFinite(n) || n < 0) return '#111827';
+    return palette[n % palette.length];
+  }
+
+  function pointOnCanvas(p){
+    const pad = 42;
+    const x = pad + Number(p.x || 0.5) * (canvas.width - pad * 2);
+    const y = pad + Number(p.y || 0.5) * (canvas.height - pad * 2);
+    return { x, y };
+  }
+
+  function roundedRect(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawLabel(p, x, y){
+    const label = String(p.student_id || p.name || '');
+    ctx.save();
+    ctx.font = 'bold 12px system-ui, -apple-system, Segoe UI, sans-serif';
+    const w = Math.ceil(ctx.measureText(label).width) + 14;
+    const h = 22;
+    let lx = x + 12;
+    let ly = y - 11;
+    if (lx + w > canvas.width - 8) lx = x - w - 12;
+    if (ly < 8) ly = y + 14;
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    ctx.strokeStyle = 'rgba(17,24,39,0.16)';
+    roundedRect(ctx, lx, ly, w, h, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#111827';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, lx + 7, ly + h / 2);
+    ctx.restore();
+  }
+
+  function drawDenseFog(students){
+    const groups = new Map();
+    (students || []).filter(p => p.status === 'core').forEach(p => {
+      const key = String(p.cluster_id ?? 'core');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+
+    ctx.save();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const pts = group.map(pointOnCanvas);
+      const cx = pts.reduce((sum, p) => sum + p.x, 0) / pts.length;
+      const cy = pts.reduce((sum, p) => sum + p.y, 0) / pts.length;
+      const spread = Math.max(...pts.map(p => Math.hypot(p.x - cx, p.y - cy)), 42);
+      const radius = Math.min(180, spread + 78);
+      const alpha = Math.min(0.28, 0.06 + group.length * 0.035);
+      const g = ctx.createRadialGradient(cx, cy, 8, cx, cy, radius);
+      g.addColorStop(0, `rgba(17,24,39,${alpha})`);
+      g.addColorStop(0.58, `rgba(17,24,39,${alpha * 0.42})`);
+      g.addColorStop(1, 'rgba(17,24,39,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawMap(students){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(17,24,39,0.08)';
+    for (let i = 1; i < 4; i++) {
+      const x = canvas.width * i / 4;
+      const y = canvas.height * i / 4;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    if (!students || students.length === 0) {
+      ctx.fillStyle = '#111827';
+      ctx.font = '16px system-ui';
+      ctx.fillText('표시할 결과가 아직 없습니다.', 24, 42);
+      return;
+    }
+
+    drawDenseFog(students);
+
+    for (const p of students) {
+      const pt = pointOnCanvas(p);
+      ctx.save();
+      ctx.lineWidth = 2;
+      if (p.status === 'core') {
+        ctx.fillStyle = clusterColor(p.cluster_id);
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.status === 'boundary') {
+        ctx.fillStyle = clusterColor(p.cluster_id);
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+      drawLabel(p, pt.x, pt.y);
+    }
+  }
+
+  function grouped(status){
+    return (payload.students || []).filter(p => p.status === status).map(p => p.student_id || p.name);
+  }
+
+  function chips(id, items){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    if (!items || items.length === 0) {
+      el.textContent = '없음';
+      return;
+    }
+    items.forEach(item => {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.textContent = item;
+      el.appendChild(chip);
+    });
+  }
+
+  function renderStudentRows(){
+    const body = document.getElementById('studentRows');
+    if (!body) return;
+    body.innerHTML = '';
+    (payload.students || []).forEach(s => {
+      const tr = document.createElement('tr');
+      const clusterText = Number(s.cluster_id) >= 0 ? `영역 ${Number(s.cluster_id) + 1}` : '-';
+      tr.innerHTML = `
+        <td>${s.student_id || s.name || ''}</td>
+        <td>${s.status_label || ''}</td>
+        <td>${clusterText}</td>
+        <td>${Number(s.x || 0).toFixed(3)}</td>
+        <td>${Number(s.y || 0).toFixed(3)}</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+
+  function renderKmeans(){
+    const box = document.getElementById('kmeansRows');
+    const data = payload.kmeans_optional || {};
+    if (!box) return;
+    box.innerHTML = '';
+    if (!data.enabled) {
+      box.textContent = '표시할 보조 집단 요약이 없습니다.';
+      return;
+    }
+    (data.groups || []).forEach(group => {
+      const div = document.createElement('div');
+      div.className = 'group-card';
+      div.innerHTML = `<b>보조 집단 ${group.group_no} (${group.size}명)</b><span>${(group.members || []).join(', ') || '없음'}</span>`;
+      box.appendChild(div);
+    });
+  }
+
+  function renderMatrix(){
+    const table = document.getElementById('distanceMatrixTable');
+    const matrix = payload.distance_matrix || {};
+    const names = matrix.names || [];
+    const values = matrix.values || [];
+    if (!table) return;
+    table.innerHTML = '';
+    if (names.length === 0) {
+      table.textContent = '거리 행렬이 없습니다.';
+      return;
+    }
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.appendChild(document.createElement('th'));
+    names.forEach(name => {
+      const th = document.createElement('th');
+      th.textContent = name;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    names.forEach((name, i) => {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = name;
+      tr.appendChild(th);
+      names.forEach((_, j) => {
+        const td = document.createElement('td');
+        const v = values[i] && values[i][j];
+        td.textContent = Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '-';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+  }
+
+  function render(){
+    text('nSubmitted', payload.n_submitted ?? '-');
+    text('nStudents', payload.n_students ?? '-');
+    text('nClusters', (payload.clusters || []).length);
+    text('generatedAt', payload.generated_at ? payload.generated_at.replace('T', ' ').replace('Z', '') : '-');
+    text('summaryShort', payload.summary && payload.summary.short ? payload.summary.short : '-');
+    chips('coreList', grouped('core'));
+    chips('boundaryList', grouped('boundary'));
+    chips('outlierList', grouped('outlier'));
+    drawMap(payload.students || []);
+    renderStudentRows();
+    renderKmeans();
+    renderMatrix();
+  }
+
+  render();
+})();
+</script>
+{% endif %}
+{% endblock %}
