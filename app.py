@@ -2710,20 +2710,17 @@ def research_sync_session_sheet(code: str, sid: str):
 
 @app.route("/research/class/<code>/result/<sid>")
 def research_anonymized_session_result(code: str, sid: str):
-    """Show an anonymized class/session result page for research screenshots."""
+    """Show the regular result UI with anonymized class/student labels."""
     guard = require_admin()
     if guard is not None:
         return guard
     if not engine:
         return render_template(
-            "research_result.html",
-            db_ready=False,
-            unavailable=True,
-            availability={"message": "DB 연결이 설정되지 않았습니다."},
-            research_class_id="C??",
+            "result_unavailable.html",
+            cls={"name": "C??"},
+            code="C??",
             sid=sid,
-            spm_payload=None,
-            spm_error=None,
+            availability={"message": "DB 연결이 설정되지 않았습니다."},
         ), 500
 
     code = (code or "").upper().strip()
@@ -2738,33 +2735,39 @@ def research_anonymized_session_result(code: str, sid: str):
     availability = db_get_result_availability(code, sid)
     if not availability.get("available"):
         return render_template(
-            "research_result.html",
-            db_ready=True,
-            unavailable=True,
-            availability=availability,
-            research_class_id=class_alias,
+            "result_unavailable.html",
+            cls={"name": class_alias},
+            code=class_alias,
             sid=sid,
-            spm_payload=None,
-            spm_error=None,
+            availability=availability,
         ), 409
 
     spm_payload = None
+    previous_spm_payload = None
     spm_error = None
     try:
         spm_payload = build_research_spm_result_payload(code, sid)
+        prev_sid = previous_visible_session_id(sid)
+        if prev_sid and db_get_result_availability(code, prev_sid).get("available"):
+            previous_spm_payload = build_research_spm_result_payload(code, prev_sid)
     except Exception as e:
         app.logger.exception("Research SPM payload failed for class=%s sid=%s", code, sid)
         spm_error = str(e)
 
     return render_template(
-        "research_result.html",
-        db_ready=True,
-        unavailable=False,
-        availability=availability,
-        research_class_id=class_alias,
+        "session_result.html",
+        cls={"name": class_alias},
+        code=class_alias,
         sid=sid,
+        total=(spm_payload or {}).get("n_students", 0) if isinstance(spm_payload, dict) else 0,
+        done=(spm_payload or {}).get("n_submitted", 0) if isinstance(spm_payload, dict) else 0,
+        teacher_has=False,
+        state={},
         spm_payload=spm_payload,
+        previous_spm_payload=previous_spm_payload,
         spm_error=spm_error,
+        research_mode=True,
+        display_code=class_alias,
     )
 
 
